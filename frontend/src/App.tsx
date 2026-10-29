@@ -40,7 +40,9 @@ function Results({ result }: { result: SearchResponse }) {
           <h2>Найдено: {result.vacancies.length}</h2>
         </div>
         <span className="provider">
-          {result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'HTML-поиск'}
+          {result.provider === 'ai_job_search'
+            ? 'AI Job Search + Codex'
+            : 'Поиск по карьерному сайту'}
         </span>
       </div>
 
