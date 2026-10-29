@@ -8,6 +8,8 @@ import {
 } from './form-utils'
 import {
   loadSearchSettings,
+  loadSearchSelection,
+  saveSearchSelection,
   saveSearchSettings,
   type CareerSite,
   type SavedRole,
@@ -58,28 +60,40 @@ function VacancyCard({ vacancy }: { vacancy: Vacancy }) {
 
 function Results({ result }: { result: SearchResponse }) {
   const [selectedCompany, setSelectedCompany] = useState('')
+  const [companyFilterOpen, setCompanyFilterOpen] = useState(false)
   const companies = getVacancyCompanies(result.vacancies)
   const visibleVacancies = filterVacanciesByCompany(result.vacancies, selectedCompany)
 
   return (
-    <section className="results" aria-live="polite">
+    <section className="results" aria-live="polite" onClick={() => setCompanyFilterOpen(false)}>
       <div className="results-heading">
         <div>
           <p className="eyebrow">Результаты</p>
           <h2>{selectedCompany ? `Показано: ${visibleVacancies.length} из ${result.vacancies.length}` : `Найдено: ${result.vacancies.length}`}</h2>
         </div>
         <div className="results-controls">
-          <label className="company-filter">
+          <div className="company-filter" onClick={(event) => event.stopPropagation()}>
             <span>Компания</span>
-            <select
-              value={selectedCompany}
-              onChange={(event) => setSelectedCompany(event.target.value)}
-              disabled={companies.length === 0}
-            >
-              <option value="">{companies.length > 0 ? 'Все компании' : 'Нет найденных компаний'}</option>
-              {companies.map((company) => <option key={company} value={company}>{company}</option>)}
-            </select>
-          </label>
+            <div className={companyFilterOpen ? 'company-select open' : 'company-select'}>
+              <button
+                type="button"
+                className="company-select-trigger"
+                disabled={companies.length === 0}
+                onClick={() => setCompanyFilterOpen((open) => !open)}
+                aria-expanded={companyFilterOpen}
+              >
+                <span>{companies.length === 0 ? 'Нет найденных компаний' : selectedCompany || 'Все компании'}</span>
+                <i aria-hidden="true">⌄</i>
+              </button>
+              {companyFilterOpen ? <div className="company-select-menu">
+                <button type="button" className={!selectedCompany ? 'company-option selected' : 'company-option'} onClick={() => { setSelectedCompany(''); setCompanyFilterOpen(false) }}><span>Все компании</span><i>{result.vacancies.length}</i></button>
+                {companies.map((company) => {
+                  const count = filterVacanciesByCompany(result.vacancies, company).length
+                  return <button type="button" key={company} className={selectedCompany === company ? 'company-option selected' : 'company-option'} onClick={() => { setSelectedCompany(company); setCompanyFilterOpen(false) }}><span>{company}</span><i>{count}</i></button>
+                })}
+              </div> : null}
+            </div>
+          </div>
           <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
         </div>
       </div>
@@ -375,10 +389,20 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
 export default function App() {
   const [page, setPage] = useState<Page>('search')
   const [settings, setSettings] = useState<SearchSettings>(loadSearchSettings)
-  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(() => settings.sites.map((site) => site.id))
-  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(() => settings.roles.map((role) => role.id))
-  const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(() => settings.includeKeywords)
-  const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(() => settings.excludeKeywords)
+  const [initialSelection] = useState(loadSearchSelection)
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(initialSelection.siteIds)
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(initialSelection.roleIds)
+  const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(initialSelection.includeKeywords)
+  const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(initialSelection.excludeKeywords)
+
+  useEffect(() => {
+    saveSearchSelection({
+      siteIds: selectedSiteIds,
+      roleIds: selectedRoleIds,
+      includeKeywords: selectedIncludeKeywords,
+      excludeKeywords: selectedExcludeKeywords,
+    })
+  }, [selectedSiteIds, selectedRoleIds, selectedIncludeKeywords, selectedExcludeKeywords])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -395,10 +419,10 @@ export default function App() {
         }
         setSettings(remoteSettings)
         saveSearchSettings(remoteSettings)
-        setSelectedSiteIds(remoteSettings.sites.map((site) => site.id))
-        setSelectedRoleIds(remoteSettings.roles.map((role) => role.id))
-        setSelectedIncludeKeywords(remoteSettings.includeKeywords)
-        setSelectedExcludeKeywords(remoteSettings.excludeKeywords)
+        setSelectedSiteIds((current) => current.filter((id) => remoteSettings.sites.some((site) => site.id === id)))
+        setSelectedRoleIds((current) => current.filter((id) => remoteSettings.roles.some((role) => role.id === id)))
+        setSelectedIncludeKeywords((current) => current.filter((keyword) => remoteSettings.includeKeywords.includes(keyword)))
+        setSelectedExcludeKeywords((current) => current.filter((keyword) => remoteSettings.excludeKeywords.includes(keyword)))
       })
       .catch(() => undefined)
 
@@ -411,8 +435,8 @@ export default function App() {
     void saveRemoteSearchSettings(nextSettings).catch(() => undefined)
     setSelectedSiteIds((current) => current.filter((id) => nextSettings.sites.some((site) => site.id === id)))
     setSelectedRoleIds((current) => current.filter((id) => nextSettings.roles.some((role) => role.id === id)))
-    setSelectedIncludeKeywords(nextSettings.includeKeywords)
-    setSelectedExcludeKeywords(nextSettings.excludeKeywords)
+    setSelectedIncludeKeywords((current) => current.filter((keyword) => nextSettings.includeKeywords.includes(keyword)))
+    setSelectedExcludeKeywords((current) => current.filter((keyword) => nextSettings.excludeKeywords.includes(keyword)))
   }
 
   return (

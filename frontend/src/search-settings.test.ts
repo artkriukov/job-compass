@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_SEARCH_SETTINGS, parseSearchSettings } from './search-settings'
+import {
+  EMPTY_SEARCH_SELECTION,
+  EMPTY_SEARCH_SETTINGS,
+  parseSearchSelection,
+  parseSearchSettings,
+} from './search-settings'
 
 describe('parseSearchSettings', () => {
   it('loads valid versioned settings', () => {
@@ -31,5 +36,27 @@ describe('parseSearchSettings', () => {
       sites: [], roles: [{ id: 'good', title: 'Data analyst' }],
       includeKeywords: [], excludeKeywords: [],
     })
+  })
+})
+
+describe('parseSearchSelection', () => {
+  it('loads a versioned saved search selection', () => {
+    expect(parseSearchSelection(JSON.stringify({
+      version: 1,
+      siteIds: ['site-1', 'site-2'],
+      roleIds: ['role-1'],
+      includeKeywords: ['Linux'],
+      excludeKeywords: ['Продажи'],
+    }))).toEqual({
+      siteIds: ['site-1', 'site-2'],
+      roleIds: ['role-1'],
+      includeKeywords: ['linux'],
+      excludeKeywords: ['продажи'],
+    })
+  })
+
+  it('returns an empty selection for corrupt or unsupported data', () => {
+    expect(parseSearchSelection('{broken')).toEqual(EMPTY_SEARCH_SELECTION)
+    expect(parseSearchSelection(JSON.stringify({ version: 2 }))).toEqual(EMPTY_SEARCH_SELECTION)
   })
 })
