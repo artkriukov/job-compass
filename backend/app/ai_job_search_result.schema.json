@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "vacancies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {"type": "string"},
+          "company": {"type": ["string", "null"]},
+          "location": {"type": ["string", "null"]},
+          "url": {"type": "string", "format": "uri"},
+          "score": {"type": "integer", "minimum": 0, "maximum": 100},
+          "reason": {"type": "string"},
+          "source_site": {"type": "string", "format": "uri"}
+        },
+        "required": ["title", "company", "location", "url", "score", "reason", "source_site"]
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["vacancies", "warnings"]
+}

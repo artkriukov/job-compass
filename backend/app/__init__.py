@@ -1,0 +1,2 @@
+"""Job Compass backend package."""
+
