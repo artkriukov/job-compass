@@ -27,6 +27,14 @@ function normalizeUrl(value: string): string | null {
   }
 }
 
+function EditIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>
+}
+
+function TrashIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
+}
+
 function VacancyCard({ vacancy }: { vacancy: Vacancy }) {
   return (
     <article className="vacancy-card">
@@ -142,7 +150,7 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
       <div className="settings-grid">
         <section className="collection-panel" aria-labelledby="sites-title">
           <div className="section-heading">
-            <div><span>01</span><div><h2 id="sites-title">Карьерные сайты</h2><p>{settings.sites.length} сохранено</p></div></div>
+            <div><h2 id="sites-title">Карьерные сайты</h2><p>{settings.sites.length} сохранено</p></div>
             <button type="button" className={siteFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => { if (siteFormOpen) resetSiteForm(); else setSiteFormOpen(true) }} aria-expanded={siteFormOpen} aria-label={siteFormOpen ? 'Закрыть форму сайта' : 'Добавить карьерный сайт'}>+</button>
           </div>
           {siteFormOpen ? <form className="compact-form site-form" onSubmit={handleSiteSubmit}>
@@ -157,10 +165,10 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
             {settings.sites.length === 0 ? <p className="list-empty">Пока нет сохранённых сайтов.</p> : settings.sites.map((site) => (
               <article className="saved-item" key={site.id}>
                 <div className="saved-icon">{site.name.slice(0, 2).toUpperCase()}</div>
-                <div className="saved-copy"><h3>{site.name}</h3><a href={site.url} target="_blank" rel="noreferrer">{site.url}</a></div>
+                <div className="saved-copy"><h3>{site.name}</h3></div>
                 <div className="item-actions">
-                  <button type="button" className="item-button" onClick={() => editSite(site)}>Редактировать</button>
-                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, sites: settings.sites.filter((item) => item.id !== site.id) })}>Удалить</button>
+                  <button type="button" className="item-button" onClick={() => editSite(site)} aria-label={`Редактировать ${site.name}`} title="Редактировать"><EditIcon /></button>
+                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, sites: settings.sites.filter((item) => item.id !== site.id) })} aria-label={`Удалить ${site.name}`} title="Удалить"><TrashIcon /></button>
                 </div>
               </article>
             ))}
@@ -169,7 +177,7 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
 
         <section className="collection-panel" aria-labelledby="roles-title">
           <div className="section-heading">
-            <div><span>02</span><div><h2 id="roles-title">Искомые должности</h2><p>{settings.roles.length} сохранено</p></div></div>
+            <div><h2 id="roles-title">Искомые должности</h2><p>{settings.roles.length} сохранено</p></div>
             <button type="button" className={roleFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => { setRoleFormOpen((open) => !open); if (roleFormOpen) { setEditingRoleId(null); setRoleTitle('') } }} aria-expanded={roleFormOpen} aria-label={roleFormOpen ? 'Закрыть форму должности' : 'Добавить должность'}>+</button>
           </div>
           {roleFormOpen ? <form className="compact-form role-form" onSubmit={handleRoleSubmit}>
@@ -183,10 +191,10 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
             {settings.roles.length === 0 ? <p className="list-empty">Добавьте один или несколько вариантов должности.</p> : settings.roles.map((role) => (
               <article className="saved-item saved-role" key={role.id}>
                 <div className="saved-icon role-icon">{role.title.slice(0, 2).toUpperCase()}</div>
-                <div className="saved-copy"><h3>{role.title}</h3><p>Вариант поискового запроса</p></div>
+                <div className="saved-copy"><h3>{role.title}</h3></div>
                 <div className="item-actions">
-                  <button type="button" className="item-button" onClick={() => { setEditingRoleId(role.id); setRoleTitle(role.title); setRoleFormOpen(true); setError(null) }}>Редактировать</button>
-                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, roles: settings.roles.filter((item) => item.id !== role.id) })}>Удалить</button>
+                  <button type="button" className="item-button" onClick={() => { setEditingRoleId(role.id); setRoleTitle(role.title); setRoleFormOpen(true); setError(null) }} aria-label={`Редактировать ${role.title}`} title="Редактировать"><EditIcon /></button>
+                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, roles: settings.roles.filter((item) => item.id !== role.id) })} aria-label={`Удалить ${role.title}`} title="Удалить"><TrashIcon /></button>
                 </div>
               </article>
             ))}
