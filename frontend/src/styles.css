@@ -124,7 +124,16 @@ legend { margin-bottom: 11px; }
 .multi-select-trigger i { color: #6f7772; font-size: 20px; font-style: normal; transition: transform .18s; }
 .multi-select.open .multi-select-trigger { border-color: var(--lime-dark); box-shadow: 0 0 0 4px #c8f56128; }
 .multi-select.open .multi-select-trigger i { transform: rotate(180deg); }
-.multi-select-menu { position: absolute; z-index: 8; top: calc(100% + 8px); right: 0; left: 0; display: grid; max-height: 260px; padding: 7px; overflow-y: auto; border: 1px solid #d2d6ce; border-radius: 12px; background: #fff; box-shadow: 0 18px 45px #1e2b231f; }
+.multi-select-menu { position: absolute; z-index: 8; top: calc(100% + 8px); right: 0; left: 0; display: grid; max-height: 320px; padding: 7px; border: 1px solid #d2d6ce; border-radius: 12px; background: #fff; box-shadow: 0 18px 45px #1e2b231f; }
+.multi-options-scroll { display: grid; min-height: 0; overflow-y: auto; }
+.selection-search { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 5px; margin: 1px 1px 7px; padding: 0 9px; border: 1px solid #d4d8d0; border-radius: 9px; background: #f8f9f5; }
+.selection-search:focus-within { border-color: var(--lime-dark); box-shadow: 0 0 0 3px #c8f56120; background: #fff; }
+.selection-search > span { color: #758078; font-size: 20px; line-height: 1; }
+.selection-search input { height: 40px; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 13px; }
+.selection-search input:focus { box-shadow: none; }
+.selection-search button { display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: 50%; color: #69736d; background: #e7eae4; font-size: 16px; }
+.selection-search button:hover { color: var(--ink); background: #dce1d8; }
+.selection-empty { margin: 0; padding: 22px 12px; color: #858d88; font-size: 12px; text-align: center; }
 .multi-option { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border-radius: 8px; cursor: pointer; }
 .multi-option:hover { background: #f3f5ef; }
 .multi-option:has(input:checked) { background: #f2fbdc; }

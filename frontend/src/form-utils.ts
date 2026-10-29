@@ -38,3 +38,9 @@ export function filterVacanciesByCompany(vacancies: Vacancy[], company: string):
   return vacancies.filter((vacancy) => getVacancyCompany(vacancy) === company)
 }
 
+export function matchesSelectionSearch(item: { label: string; meta?: string }, query: string): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase('ru')
+  if (!normalizedQuery) return true
+  return `${item.label} ${item.meta ?? ''}`.toLocaleLowerCase('ru').includes(normalizedQuery)
+}
+

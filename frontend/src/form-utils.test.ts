@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   filterVacanciesByCompany,
   getVacancyCompanies,
+  matchesSelectionSearch,
   mergeSearchResponses,
   parseLines,
   UNKNOWN_COMPANY,
@@ -61,6 +62,16 @@ describe('company vacancy filters', () => {
     expect(filterVacanciesByCompany(vacancies, 'МТС').map((vacancy) => vacancy.url))
       .toEqual(['https://example.test/jobs/2'])
     expect(filterVacanciesByCompany(vacancies, '')).toBe(vacancies)
+  })
+})
+
+describe('matchesSelectionSearch', () => {
+  const site = { label: 'Яндекс', meta: 'yandex.ru' }
+
+  it('matches a site by company name or domain', () => {
+    expect(matchesSelectionSearch(site, 'янд')).toBe(true)
+    expect(matchesSelectionSearch(site, 'YANDEX.RU')).toBe(true)
+    expect(matchesSelectionSearch(site, 'сбер')).toBe(false)
   })
 })
 

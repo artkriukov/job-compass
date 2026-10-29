@@ -4,6 +4,7 @@ import { getRemoteSearchSettings, saveRemoteSearchSettings, searchVacancies } fr
 import {
   filterVacanciesByCompany,
   getVacancyCompanies,
+  matchesSelectionSearch,
   mergeSearchResponses,
 } from './form-utils'
 import {
@@ -308,19 +309,30 @@ type SearchPageProps = {
 
 type SelectionItem = { id: string; label: string; meta?: string }
 
-function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onToggle }: { label: string; items: SelectionItem[]; selectedIds: string[]; open: boolean; onOpenChange: () => void; onToggle: (id: string) => void }) {
+function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onToggle, searchable = false }: { label: string; items: SelectionItem[]; selectedIds: string[]; open: boolean; onOpenChange: () => void; onToggle: (id: string) => void; searchable?: boolean }) {
+  const [query, setQuery] = useState('')
+  const activeQuery = open ? query : ''
+  const visibleItems = searchable ? items.filter((item) => matchesSelectionSearch(item, activeQuery)) : items
+
   return (
     <fieldset className="selection-field" onClick={(event) => event.stopPropagation()}>
       <legend>{label} <b>*</b></legend>
       <div className={open ? 'multi-select open' : 'multi-select'}>
         <button type="button" className="multi-select-trigger" onClick={onOpenChange} aria-expanded={open}><span>{selectedIds.length > 0 ? `Выбрано: ${selectedIds.length}` : 'Ничего не выбрано'}</span><i aria-hidden="true">⌄</i></button>
-        {open ? <div className="multi-select-menu">
-          {items.map((item) => (
-            <label className="multi-option" key={item.id}>
-              <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
-              <span><strong>{item.label}</strong>{item.meta ? <small>{item.meta}</small> : null}</span>
-            </label>
-          ))}
+        {open ? <div className={searchable ? 'multi-select-menu searchable' : 'multi-select-menu'}>
+          {searchable ? <label className="selection-search">
+            <span aria-hidden="true">⌕</span>
+            <input value={activeQuery} onChange={(event) => setQuery(event.target.value)} placeholder="Найти компанию…" autoFocus />
+            {activeQuery ? <button type="button" onClick={() => setQuery('')} aria-label="Очистить поиск">×</button> : null}
+          </label> : null}
+          <div className="multi-options-scroll">
+            {visibleItems.length > 0 ? visibleItems.map((item) => (
+              <label className="multi-option" key={item.id}>
+                <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
+                <span><strong>{item.label}</strong>{item.meta ? <small>{item.meta}</small> : null}</span>
+              </label>
+            )) : <p className="selection-empty">Ничего не найдено</p>}
+          </div>
         </div> : null}
       </div>
     </fieldset>
@@ -369,7 +381,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
         <section className="search-workspace">
           <form className="search-form" onSubmit={handleSubmit}>
             <div className="selection-row">
-              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} open={openDropdown === 'sites'} onOpenChange={() => setOpenDropdown((current) => current === 'sites' ? null : 'sites')} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} />
+              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} open={openDropdown === 'sites'} onOpenChange={() => setOpenDropdown((current) => current === 'sites' ? null : 'sites')} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} searchable />
               <SelectionDropdown label="Должности" items={settings.roles.map((role) => ({ id: role.id, label: role.title }))} selectedIds={selectedRoleIds} open={openDropdown === 'roles'} onOpenChange={() => setOpenDropdown((current) => current === 'roles' ? null : 'roles')} onToggle={(id) => setSelectedRoleIds(toggleSelection(selectedRoleIds, id))} />
             </div>
             <div className="selection-row filter-selection-row">
