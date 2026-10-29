@@ -84,6 +84,9 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [siteFormOpen, setSiteFormOpen] = useState(false)
   const [roleFormOpen, setRoleFormOpen] = useState(false)
+  const [filterFormOpen, setFilterFormOpen] = useState(false)
+  const [includeKeywords, setIncludeKeywords] = useState(() => settings.includeKeywords.join(', '))
+  const [excludeKeywords, setExcludeKeywords] = useState(() => settings.excludeKeywords.join(', '))
 
   function resetSiteForm() {
     setSiteName('')
@@ -135,6 +138,17 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
     setRoleTitle('')
     setEditingRoleId(null)
     setRoleFormOpen(false)
+    setError(null)
+  }
+
+  function handleFilterSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onChange({
+      ...settings,
+      includeKeywords: parseLines(includeKeywords),
+      excludeKeywords: parseLines(excludeKeywords),
+    })
+    setFilterFormOpen(false)
     setError(null)
   }
 
@@ -200,6 +214,22 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
             ))}
           </div>
         </section>
+
+        <section className="collection-panel" aria-labelledby="filters-title">
+          <div className="section-heading">
+            <div><h2 id="filters-title">Ключевые слова и исключения</h2><p>{settings.includeKeywords.length + settings.excludeKeywords.length} сохранено</p></div>
+            <button type="button" className={filterFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => setFilterFormOpen((open) => !open)} aria-expanded={filterFormOpen} aria-label={filterFormOpen ? 'Закрыть настройки фильтров' : 'Настроить фильтры'}>+</button>
+          </div>
+          {filterFormOpen ? <form className="compact-form filter-form" onSubmit={handleFilterSubmit}>
+            <label className="field"><span>Ключевые слова</span><input value={includeKeywords} onChange={(event) => setIncludeKeywords(event.target.value)} placeholder="remote, Linux, Service Desk" /><small>Вакансия должна содержать нужные слова</small></label>
+            <label className="field"><span>Слова-исключения</span><input value={excludeKeywords} onChange={(event) => setExcludeKeywords(event.target.value)} placeholder="senior, продажи, телефон" /><small>Такие вакансии не попадут в результаты</small></label>
+            <div className="form-actions"><button type="submit" className="primary-button">Сохранить фильтры <span>→</span></button></div>
+          </form> : null}
+          <div className="filter-summary">
+            <div><strong>Ключевые слова</strong><span>{settings.includeKeywords.length > 0 ? settings.includeKeywords.join(' · ') : 'Не заданы'}</span></div>
+            <div><strong>Исключения</strong><span>{settings.excludeKeywords.length > 0 ? settings.excludeKeywords.join(' · ') : 'Не заданы'}</span></div>
+          </div>
+        </section>
       </div>
 
       <section className="ready-banner">
@@ -241,8 +271,8 @@ function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onTo
 }
 
 function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, onOpenSettings }: SearchPageProps) {
-  const [include, setInclude] = useState('')
-  const [exclude, setExclude] = useState('')
+  const [include, setInclude] = useState(() => settings.includeKeywords.join(', '))
+  const [exclude, setExclude] = useState(() => settings.excludeKeywords.join(', '))
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

@@ -12,6 +12,8 @@ export type SavedRole = {
 export type SearchSettings = {
   sites: CareerSite[]
   roles: SavedRole[]
+  includeKeywords: string[]
+  excludeKeywords: string[]
 }
 
 type StoredSearchSettings = SearchSettings & {
@@ -20,10 +22,21 @@ type StoredSearchSettings = SearchSettings & {
 
 export const SEARCH_SETTINGS_KEY = 'job-compass.search-settings.v1'
 
-export const EMPTY_SEARCH_SETTINGS: SearchSettings = { sites: [], roles: [] }
+export const EMPTY_SEARCH_SETTINGS: SearchSettings = {
+  sites: [],
+  roles: [],
+  includeKeywords: [],
+  excludeKeywords: [],
+}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function cleanStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter(isNonEmptyString).map((item) => item.trim().toLowerCase()))]
+    : []
 }
 
 export function parseSearchSettings(value: string | null): SearchSettings {
@@ -50,7 +63,12 @@ export function parseSearchSettings(value: string | null): SearchSettings {
         isNonEmptyString(role.id) &&
         isNonEmptyString(role.title),
     )
-    return { sites, roles }
+    return {
+      sites,
+      roles,
+      includeKeywords: cleanStringList(parsed.includeKeywords),
+      excludeKeywords: cleanStringList(parsed.excludeKeywords),
+    }
   } catch {
     return EMPTY_SEARCH_SETTINGS
   }
