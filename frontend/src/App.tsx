@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { searchVacancies } from './api'
+import { getRemoteSearchSettings, saveRemoteSearchSettings, searchVacancies } from './api'
 import { mergeSearchResponses } from './form-utils'
 import {
   loadSearchSettings,
@@ -353,9 +353,35 @@ export default function App() {
   const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(() => settings.includeKeywords)
   const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(() => settings.excludeKeywords)
 
+  useEffect(() => {
+    const controller = new AbortController()
+    const localSettings = loadSearchSettings()
+    const localHasData = localSettings.sites.length > 0 || localSettings.roles.length > 0 ||
+      localSettings.includeKeywords.length > 0 || localSettings.excludeKeywords.length > 0
+
+    void getRemoteSearchSettings(controller.signal)
+      .then((remoteSettings) => {
+        const remoteHasData = remoteSettings.sites.length > 0 || remoteSettings.roles.length > 0 ||
+          remoteSettings.includeKeywords.length > 0 || remoteSettings.excludeKeywords.length > 0
+        if (!remoteHasData && localHasData) {
+          return saveRemoteSearchSettings(localSettings)
+        }
+        setSettings(remoteSettings)
+        saveSearchSettings(remoteSettings)
+        setSelectedSiteIds(remoteSettings.sites.map((site) => site.id))
+        setSelectedRoleIds(remoteSettings.roles.map((role) => role.id))
+        setSelectedIncludeKeywords(remoteSettings.includeKeywords)
+        setSelectedExcludeKeywords(remoteSettings.excludeKeywords)
+      })
+      .catch(() => undefined)
+
+    return () => controller.abort()
+  }, [])
+
   function updateSettings(nextSettings: SearchSettings) {
     setSettings(nextSettings)
     saveSearchSettings(nextSettings)
+    void saveRemoteSearchSettings(nextSettings).catch(() => undefined)
     setSelectedSiteIds((current) => current.filter((id) => nextSettings.sites.some((site) => site.id === id)))
     setSelectedRoleIds((current) => current.filter((id) => nextSettings.roles.some((role) => role.id === id)))
     setSelectedIncludeKeywords(nextSettings.includeKeywords)

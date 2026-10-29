@@ -19,6 +19,33 @@ docker compose up --build
 
 Откройте `http://localhost:3000`.
 
+## Хранение настроек в Supabase
+
+Job Compass может хранить карьерные сайты, должности, ключевые слова и исключения в
+PostgreSQL Supabase. Схема нормализована до 3НФ и находится в
+`supabase/migrations/001_search_settings.sql`.
+
+1. Создайте проект Supabase.
+2. Откройте **SQL Editor**, вставьте содержимое файла миграции и выполните запрос.
+3. В **Connect → Session pooler** скопируйте PostgreSQL connection string.
+4. Создайте локальный `.env` из `.env.example` и добавьте строку подключения:
+
+```env
+SUPABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@HOST:5432/postgres?sslmode=require
+```
+
+Это именно серверная строка PostgreSQL Session Pooler, а не публичный HTTPS URL проекта.
+Если пароль содержит специальные символы, закодируйте их для URL. `.env` не добавляется
+в Git. После изменения конфигурации перезапустите приложение:
+
+```bash
+docker compose up -d --build
+```
+
+При первом подключении пустой Supabase автоматически получает уже сохранённые локальные
+настройки. Если Supabase не настроен или временно недоступен, приложение продолжает
+работать через локальное хранилище браузера.
+
 Чтобы включить AI Job Search, клонируйте репозиторий отдельно, установите portal CLI по его инструкции и укажите абсолютный путь в `.env`:
 
 ```bash
