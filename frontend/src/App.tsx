@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { getRemoteSearchSettings, saveRemoteSearchSettings, searchVacancies } from './api'
-import { mergeSearchResponses } from './form-utils'
+import {
+  filterVacanciesByCompany,
+  getVacancyCompanies,
+  mergeSearchResponses,
+} from './form-utils'
 import {
   loadSearchSettings,
   saveSearchSettings,
@@ -53,17 +57,38 @@ function VacancyCard({ vacancy }: { vacancy: Vacancy }) {
 }
 
 function Results({ result }: { result: SearchResponse }) {
+  const [selectedCompany, setSelectedCompany] = useState('')
+  const companies = getVacancyCompanies(result.vacancies)
+  const visibleVacancies = filterVacanciesByCompany(result.vacancies, selectedCompany)
+
   return (
     <section className="results" aria-live="polite">
       <div className="results-heading">
-        <div><p className="eyebrow">Результаты</p><h2>Найдено: {result.vacancies.length}</h2></div>
-        <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
+        <div>
+          <p className="eyebrow">Результаты</p>
+          <h2>{selectedCompany ? `Показано: ${visibleVacancies.length} из ${result.vacancies.length}` : `Найдено: ${result.vacancies.length}`}</h2>
+        </div>
+        <div className="results-controls">
+          {companies.length > 0 ? (
+            <label className="company-filter">
+              <span>Компания</span>
+              <select value={selectedCompany} onChange={(event) => setSelectedCompany(event.target.value)}>
+                <option value="">Все компании</option>
+                {companies.map((company) => <option key={company} value={company}>{company}</option>)}
+              </select>
+            </label>
+          ) : null}
+          <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
+        </div>
       </div>
       {result.warnings.length > 0 ? <div className="warnings" role="status">{result.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
-      {result.vacancies.length > 0 ? (
-        <div className="vacancy-list">{result.vacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} />)}</div>
+      {visibleVacancies.length > 0 ? (
+        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} />)}</div>
       ) : (
-        <div className="empty-state"><h3>Подходящих вакансий пока нет</h3><p>Попробуйте другую должность или уберите часть исключений.</p></div>
+        <div className="empty-state">
+          <h3>{result.vacancies.length > 0 ? 'У этой компании вакансий не найдено' : 'Подходящих вакансий пока нет'}</h3>
+          <p>{result.vacancies.length > 0 ? 'Выберите другую компанию или покажите все результаты.' : 'Попробуйте другую должность или уберите часть исключений.'}</p>
+        </div>
       )}
     </section>
   )

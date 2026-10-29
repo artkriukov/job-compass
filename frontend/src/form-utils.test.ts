@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { mergeSearchResponses, parseLines } from './form-utils'
+import {
+  filterVacanciesByCompany,
+  getVacancyCompanies,
+  mergeSearchResponses,
+  parseLines,
+  UNKNOWN_COMPANY,
+} from './form-utils'
 
 describe('parseLines', () => {
   it('parses new lines, commas and removes duplicates', () => {
@@ -24,6 +30,37 @@ describe('mergeSearchResponses', () => {
     expect(result.vacancies).toHaveLength(1)
     expect(result.vacancies[0].score).toBe(90)
     expect(result.warnings).toEqual(['warning'])
+  })
+})
+
+describe('company vacancy filters', () => {
+  const vacancies = [
+    {
+      title: 'Support engineer', company: 'Яндекс', location: null,
+      url: 'https://example.test/jobs/1', score: 90, reason: 'Support',
+      source_site: 'https://example.test/jobs',
+    },
+    {
+      title: 'Service desk engineer', company: 'МТС', location: null,
+      url: 'https://example.test/jobs/2', score: 80, reason: 'Service Desk',
+      source_site: 'https://example.test/jobs',
+    },
+    {
+      title: 'Technical specialist', company: null, location: null,
+      url: 'https://example.test/jobs/3', score: 70, reason: 'Technical support',
+      source_site: 'https://example.test/jobs',
+    },
+  ]
+
+  it('returns unique sorted company options including an unknown company', () => {
+    expect(getVacancyCompanies([...vacancies, { ...vacancies[0], url: 'https://example.test/jobs/4' }]))
+      .toEqual([UNKNOWN_COMPANY, 'МТС', 'Яндекс'])
+  })
+
+  it('filters vacancies by the selected company and returns all without a selection', () => {
+    expect(filterVacanciesByCompany(vacancies, 'МТС').map((vacancy) => vacancy.url))
+      .toEqual(['https://example.test/jobs/2'])
+    expect(filterVacanciesByCompany(vacancies, '')).toBe(vacancies)
   })
 })
 
