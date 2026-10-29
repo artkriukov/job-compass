@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { searchVacancies } from './api'
-import { parseLines } from './form-utils'
+import { mergeSearchResponses, parseLines } from './form-utils'
 import {
   loadSearchSettings,
   saveSearchSettings,
@@ -214,21 +214,44 @@ type SearchPageProps = {
   settings: SearchSettings
   selectedSiteIds: string[]
   setSelectedSiteIds: (ids: string[]) => void
-  selectedRoleId: string
-  setSelectedRoleId: (id: string) => void
+  selectedRoleIds: string[]
+  setSelectedRoleIds: (ids: string[]) => void
   onOpenSettings: () => void
 }
 
-function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleId, setSelectedRoleId, onOpenSettings }: SearchPageProps) {
+type SelectionItem = { id: string; label: string; meta?: string }
+
+function SelectionDropdown({ label, items, selectedIds, onToggle }: { label: string; items: SelectionItem[]; selectedIds: string[]; onToggle: (id: string) => void }) {
+  return (
+    <fieldset className="selection-field">
+      <legend>{label} <b>*</b></legend>
+      <details className="multi-select">
+        <summary><span>{selectedIds.length > 0 ? `Выбрано: ${selectedIds.length}` : 'Ничего не выбрано'}</span><i aria-hidden="true">⌄</i></summary>
+        <div className="multi-select-menu">
+          {items.map((item) => (
+            <label className="multi-option" key={item.id}>
+              <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
+              <span><strong>{item.label}</strong>{item.meta ? <small>{item.meta}</small> : null}</span>
+            </label>
+          ))}
+        </div>
+      </details>
+      <div className="selection-preview">
+        {items.filter((item) => selectedIds.includes(item.id)).map((item) => <span key={item.id}>{item.label}<button type="button" onClick={() => onToggle(item.id)} aria-label={`Убрать ${item.label}`}>×</button></span>)}
+      </div>
+    </fieldset>
+  )
+}
+
+function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, onOpenSettings }: SearchPageProps) {
   const [include, setInclude] = useState('')
   const [exclude, setExclude] = useState('')
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const selectedRole = settings.roles.find((role) => role.id === selectedRoleId)
 
-  function toggleSite(id: string) {
-    setSelectedSiteIds(selectedSiteIds.includes(id) ? selectedSiteIds.filter((siteId) => siteId !== id) : [...selectedSiteIds, id])
+  function toggleSelection(ids: string[], id: string): string[] {
+    return ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -236,15 +259,18 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     setError(null)
     setResult(null)
     const sites = settings.sites.filter((site) => selectedSiteIds.includes(site.id)).map((site) => site.url)
-    if (sites.length === 0 || !selectedRole) {
+    const roles = settings.roles.filter((role) => selectedRoleIds.includes(role.id))
+    if (sites.length === 0 || roles.length === 0) {
       setError('Выберите хотя бы один сайт и одну должность.')
       return
     }
     const controller = new AbortController()
     setLoading(true)
     try {
-      const data = await searchVacancies({ sites, role: selectedRole.title, include_keywords: parseLines(include), exclude_keywords: parseLines(exclude) }, controller.signal)
-      setResult(data)
+      const includeKeywords = parseLines(include)
+      const excludeKeywords = parseLines(exclude)
+      const responses = await Promise.all(roles.map((role) => searchVacancies({ sites, role: role.title, include_keywords: includeKeywords, exclude_keywords: excludeKeywords }, controller.signal)))
+      setResult(mergeSearchResponses(responses))
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить поиск.')
     } finally {
@@ -260,23 +286,17 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
         <section className="onboarding-card"><span>Нужны исходные данные</span><h2>Сначала добавьте сайты и должности</h2><p>Они сохранятся в браузере и будут доступны для следующих поисков.</p><button type="button" className="primary-button" onClick={onOpenSettings}>Открыть настройки <span>→</span></button></section>
       ) : (
         <section className="search-workspace">
-          <div className="search-summary"><p className="eyebrow">Ваши данные</p><h2>{settings.sites.length} {settings.sites.length === 1 ? 'сайт' : 'сайтов'} · {settings.roles.length} {settings.roles.length === 1 ? 'должность' : 'должностей'}</h2><p>Настройки можно изменить в любой момент.</p><button type="button" className="text-link" onClick={onOpenSettings}>Редактировать настройки →</button></div>
           <form className="search-form" onSubmit={handleSubmit}>
-            <fieldset>
-              <legend>Где искать <b>*</b></legend>
-              <div className="choice-list">
-                {settings.sites.map((site) => (
-                  <label className="choice-card" key={site.id}><input type="checkbox" checked={selectedSiteIds.includes(site.id)} onChange={() => toggleSite(site.id)} /><span><strong>{site.name}</strong><small>{new URL(site.url).hostname}</small></span></label>
-                ))}
-              </div>
-            </fieldset>
-            <label className="field"><span>Должность <b>*</b></span><select value={selectedRoleId} onChange={(event) => setSelectedRoleId(event.target.value)} required><option value="">Выберите должность</option>{settings.roles.map((role) => <option value={role.id} key={role.id}>{role.title}</option>)}</select></label>
+            <div className="selection-row">
+              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} />
+              <SelectionDropdown label="Должности" items={settings.roles.map((role) => ({ id: role.id, label: role.title }))} selectedIds={selectedRoleIds} onToggle={(id) => setSelectedRoleIds(toggleSelection(selectedRoleIds, id))} />
+            </div>
             <div className="field-row">
               <label className="field"><span>Ключевые слова</span><input value={include} onChange={(event) => setInclude(event.target.value)} placeholder="remote, FastAPI" /><small>Через запятую</small></label>
               <label className="field"><span>Исключить</span><input value={exclude} onChange={(event) => setExclude(event.target.value)} placeholder="senior, relocation" /><small>Через запятую</small></label>
             </div>
             {error ? <p className="error" role="alert">{error}</p> : null}
-            <button type="submit" className="primary-button search-button" disabled={loading}>{loading ? <><span className="spinner" /> Ищем вакансии…</> : <>Найти вакансии <span>→</span></>}</button>
+            <button type="submit" className="primary-button search-button" disabled={loading}>{loading ? <><span className="spinner" /> Ищем по выбранным должностям…</> : <>Найти вакансии <span>→</span></>}</button>
           </form>
         </section>
       )}
@@ -289,13 +309,13 @@ export default function App() {
   const [page, setPage] = useState<Page>('search')
   const [settings, setSettings] = useState<SearchSettings>(loadSearchSettings)
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(() => settings.sites.map((site) => site.id))
-  const [selectedRoleId, setSelectedRoleId] = useState(() => settings.roles[0]?.id ?? '')
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(() => settings.roles.map((role) => role.id))
 
   function updateSettings(nextSettings: SearchSettings) {
     setSettings(nextSettings)
     saveSearchSettings(nextSettings)
     setSelectedSiteIds((current) => current.filter((id) => nextSettings.sites.some((site) => site.id === id)))
-    if (!nextSettings.roles.some((role) => role.id === selectedRoleId)) setSelectedRoleId(nextSettings.roles[0]?.id ?? '')
+    setSelectedRoleIds((current) => current.filter((id) => nextSettings.roles.some((role) => role.id === id)))
   }
 
   return (
@@ -310,7 +330,7 @@ export default function App() {
       </aside>
       <main className="main-area">
         <header className="mobile-topbar"><button type="button" className="brand" onClick={() => setPage('search')}><span className="brand-mark">JC</span><span>Job Compass</span></button></header>
-        {page === 'settings' ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} /> : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleId={selectedRoleId} setSelectedRoleId={setSelectedRoleId} onOpenSettings={() => setPage('settings')} />}
+        {page === 'settings' ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} /> : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} onOpenSettings={() => setPage('settings')} />}
         <footer><span>Job Compass</span><p>Собирает ссылки. Решение об отклике всегда остаётся за вами.</p></footer>
       </main>
     </div>
