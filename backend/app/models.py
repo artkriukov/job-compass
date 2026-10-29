@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -49,4 +50,28 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]
     ai_job_search_ready: bool
+    settings_storage_ready: bool
+
+
+class SavedCareerSite(BaseModel):
+    id: UUID
+    name: Annotated[str, Field(min_length=1, max_length=120)]
+    url: HttpUrl
+
+
+class SavedJobRole(BaseModel):
+    id: UUID
+    title: Annotated[str, Field(min_length=2, max_length=160)]
+
+
+class SearchSettingsSnapshot(BaseModel):
+    sites: Annotated[list[SavedCareerSite], Field(max_length=50)] = Field(default_factory=list)
+    roles: Annotated[list[SavedJobRole], Field(max_length=50)] = Field(default_factory=list)
+    include_keywords: Annotated[list[str], Field(max_length=50)] = Field(default_factory=list)
+    exclude_keywords: Annotated[list[str], Field(max_length=50)] = Field(default_factory=list)
+
+    @field_validator("include_keywords", "exclude_keywords")
+    @classmethod
+    def clean_saved_keywords(cls, values: list[str]) -> list[str]:
+        return sorted({" ".join(value.split()).lower() for value in values if value.strip()})
 

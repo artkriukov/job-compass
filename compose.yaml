@@ -7,6 +7,7 @@ services:
       CODEX_TIMEOUT_SECONDS: ${CODEX_TIMEOUT_SECONDS:-240}
       MAX_SITES: ${MAX_SITES:-20}
       MAX_RESULTS: ${MAX_RESULTS:-100}
+      SUPABASE_URL: ${SUPABASE_URL:-}
     ports:
       - "8000:8000"
     healthcheck:
