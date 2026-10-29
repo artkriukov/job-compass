@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { getRemoteSearchSettings, saveRemoteSearchSettings, searchVacancies } from './api'
-import { mergeSearchResponses } from './form-utils'
+import {
+  filterVacanciesByCompany,
+  getVacancyCompanies,
+  matchesSelectionSearch,
+  mergeSearchResponses,
+} from './form-utils'
 import {
   loadSearchSettings,
+  loadSearchSelection,
+  saveSearchSelection,
   saveSearchSettings,
   type CareerSite,
   type SavedRole,
@@ -53,17 +60,52 @@ function VacancyCard({ vacancy }: { vacancy: Vacancy }) {
 }
 
 function Results({ result }: { result: SearchResponse }) {
+  const [selectedCompany, setSelectedCompany] = useState('')
+  const [companyFilterOpen, setCompanyFilterOpen] = useState(false)
+  const companies = getVacancyCompanies(result.vacancies)
+  const visibleVacancies = filterVacanciesByCompany(result.vacancies, selectedCompany)
+
   return (
-    <section className="results" aria-live="polite">
+    <section className="results" aria-live="polite" onClick={() => setCompanyFilterOpen(false)}>
       <div className="results-heading">
-        <div><p className="eyebrow">Результаты</p><h2>Найдено: {result.vacancies.length}</h2></div>
-        <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
+        <div>
+          <p className="eyebrow">Результаты</p>
+          <h2>{selectedCompany ? `Показано: ${visibleVacancies.length} из ${result.vacancies.length}` : `Найдено: ${result.vacancies.length}`}</h2>
+        </div>
+        <div className="results-controls">
+          <div className="company-filter" onClick={(event) => event.stopPropagation()}>
+            <span>Компания</span>
+            <div className={companyFilterOpen ? 'company-select open' : 'company-select'}>
+              <button
+                type="button"
+                className="company-select-trigger"
+                disabled={companies.length === 0}
+                onClick={() => setCompanyFilterOpen((open) => !open)}
+                aria-expanded={companyFilterOpen}
+              >
+                <span>{companies.length === 0 ? 'Нет найденных компаний' : selectedCompany || 'Все компании'}</span>
+                <i aria-hidden="true">⌄</i>
+              </button>
+              {companyFilterOpen ? <div className="company-select-menu">
+                <button type="button" className={!selectedCompany ? 'company-option selected' : 'company-option'} onClick={() => { setSelectedCompany(''); setCompanyFilterOpen(false) }}><span>Все компании</span><i>{result.vacancies.length}</i></button>
+                {companies.map((company) => {
+                  const count = filterVacanciesByCompany(result.vacancies, company).length
+                  return <button type="button" key={company} className={selectedCompany === company ? 'company-option selected' : 'company-option'} onClick={() => { setSelectedCompany(company); setCompanyFilterOpen(false) }}><span>{company}</span><i>{count}</i></button>
+                })}
+              </div> : null}
+            </div>
+          </div>
+          <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
+        </div>
       </div>
       {result.warnings.length > 0 ? <div className="warnings" role="status">{result.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
-      {result.vacancies.length > 0 ? (
-        <div className="vacancy-list">{result.vacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} />)}</div>
+      {visibleVacancies.length > 0 ? (
+        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} />)}</div>
       ) : (
-        <div className="empty-state"><h3>Подходящих вакансий пока нет</h3><p>Попробуйте другую должность или уберите часть исключений.</p></div>
+        <div className="empty-state">
+          <h3>{result.vacancies.length > 0 ? 'У этой компании вакансий не найдено' : 'Подходящих вакансий пока нет'}</h3>
+          <p>{result.vacancies.length > 0 ? 'Выберите другую компанию или покажите все результаты.' : 'Попробуйте другую должность или уберите часть исключений.'}</p>
+        </div>
       )}
     </section>
   )
@@ -267,19 +309,30 @@ type SearchPageProps = {
 
 type SelectionItem = { id: string; label: string; meta?: string }
 
-function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onToggle }: { label: string; items: SelectionItem[]; selectedIds: string[]; open: boolean; onOpenChange: () => void; onToggle: (id: string) => void }) {
+function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onToggle, searchable = false }: { label: string; items: SelectionItem[]; selectedIds: string[]; open: boolean; onOpenChange: () => void; onToggle: (id: string) => void; searchable?: boolean }) {
+  const [query, setQuery] = useState('')
+  const activeQuery = open ? query : ''
+  const visibleItems = searchable ? items.filter((item) => matchesSelectionSearch(item, activeQuery)) : items
+
   return (
     <fieldset className="selection-field" onClick={(event) => event.stopPropagation()}>
       <legend>{label} <b>*</b></legend>
       <div className={open ? 'multi-select open' : 'multi-select'}>
         <button type="button" className="multi-select-trigger" onClick={onOpenChange} aria-expanded={open}><span>{selectedIds.length > 0 ? `Выбрано: ${selectedIds.length}` : 'Ничего не выбрано'}</span><i aria-hidden="true">⌄</i></button>
-        {open ? <div className="multi-select-menu">
-          {items.map((item) => (
-            <label className="multi-option" key={item.id}>
-              <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
-              <span><strong>{item.label}</strong>{item.meta ? <small>{item.meta}</small> : null}</span>
-            </label>
-          ))}
+        {open ? <div className={searchable ? 'multi-select-menu searchable' : 'multi-select-menu'}>
+          {searchable ? <label className="selection-search">
+            <span aria-hidden="true">⌕</span>
+            <input value={activeQuery} onChange={(event) => setQuery(event.target.value)} placeholder="Найти компанию…" autoFocus />
+            {activeQuery ? <button type="button" onClick={() => setQuery('')} aria-label="Очистить поиск">×</button> : null}
+          </label> : null}
+          <div className="multi-options-scroll">
+            {visibleItems.length > 0 ? visibleItems.map((item) => (
+              <label className="multi-option" key={item.id}>
+                <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
+                <span><strong>{item.label}</strong>{item.meta ? <small>{item.meta}</small> : null}</span>
+              </label>
+            )) : <p className="selection-empty">Ничего не найдено</p>}
+          </div>
         </div> : null}
       </div>
     </fieldset>
@@ -328,7 +381,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
         <section className="search-workspace">
           <form className="search-form" onSubmit={handleSubmit}>
             <div className="selection-row">
-              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} open={openDropdown === 'sites'} onOpenChange={() => setOpenDropdown((current) => current === 'sites' ? null : 'sites')} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} />
+              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} open={openDropdown === 'sites'} onOpenChange={() => setOpenDropdown((current) => current === 'sites' ? null : 'sites')} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} searchable />
               <SelectionDropdown label="Должности" items={settings.roles.map((role) => ({ id: role.id, label: role.title }))} selectedIds={selectedRoleIds} open={openDropdown === 'roles'} onOpenChange={() => setOpenDropdown((current) => current === 'roles' ? null : 'roles')} onToggle={(id) => setSelectedRoleIds(toggleSelection(selectedRoleIds, id))} />
             </div>
             <div className="selection-row filter-selection-row">
@@ -348,10 +401,20 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
 export default function App() {
   const [page, setPage] = useState<Page>('search')
   const [settings, setSettings] = useState<SearchSettings>(loadSearchSettings)
-  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(() => settings.sites.map((site) => site.id))
-  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(() => settings.roles.map((role) => role.id))
-  const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(() => settings.includeKeywords)
-  const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(() => settings.excludeKeywords)
+  const [initialSelection] = useState(loadSearchSelection)
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(initialSelection.siteIds)
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(initialSelection.roleIds)
+  const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(initialSelection.includeKeywords)
+  const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(initialSelection.excludeKeywords)
+
+  useEffect(() => {
+    saveSearchSelection({
+      siteIds: selectedSiteIds,
+      roleIds: selectedRoleIds,
+      includeKeywords: selectedIncludeKeywords,
+      excludeKeywords: selectedExcludeKeywords,
+    })
+  }, [selectedSiteIds, selectedRoleIds, selectedIncludeKeywords, selectedExcludeKeywords])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -368,10 +431,10 @@ export default function App() {
         }
         setSettings(remoteSettings)
         saveSearchSettings(remoteSettings)
-        setSelectedSiteIds(remoteSettings.sites.map((site) => site.id))
-        setSelectedRoleIds(remoteSettings.roles.map((role) => role.id))
-        setSelectedIncludeKeywords(remoteSettings.includeKeywords)
-        setSelectedExcludeKeywords(remoteSettings.excludeKeywords)
+        setSelectedSiteIds((current) => current.filter((id) => remoteSettings.sites.some((site) => site.id === id)))
+        setSelectedRoleIds((current) => current.filter((id) => remoteSettings.roles.some((role) => role.id === id)))
+        setSelectedIncludeKeywords((current) => current.filter((keyword) => remoteSettings.includeKeywords.includes(keyword)))
+        setSelectedExcludeKeywords((current) => current.filter((keyword) => remoteSettings.excludeKeywords.includes(keyword)))
       })
       .catch(() => undefined)
 
@@ -384,8 +447,8 @@ export default function App() {
     void saveRemoteSearchSettings(nextSettings).catch(() => undefined)
     setSelectedSiteIds((current) => current.filter((id) => nextSettings.sites.some((site) => site.id === id)))
     setSelectedRoleIds((current) => current.filter((id) => nextSettings.roles.some((role) => role.id === id)))
-    setSelectedIncludeKeywords(nextSettings.includeKeywords)
-    setSelectedExcludeKeywords(nextSettings.excludeKeywords)
+    setSelectedIncludeKeywords((current) => current.filter((keyword) => nextSettings.includeKeywords.includes(keyword)))
+    setSelectedExcludeKeywords((current) => current.filter((keyword) => nextSettings.excludeKeywords.includes(keyword)))
   }
 
   return (

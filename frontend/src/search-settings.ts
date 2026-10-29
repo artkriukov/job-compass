@@ -16,15 +16,30 @@ export type SearchSettings = {
   excludeKeywords: string[]
 }
 
+export type SearchSelection = {
+  siteIds: string[]
+  roleIds: string[]
+  includeKeywords: string[]
+  excludeKeywords: string[]
+}
+
 type StoredSearchSettings = SearchSettings & {
   version: 1
 }
 
 export const SEARCH_SETTINGS_KEY = 'job-compass.search-settings.v1'
+export const SEARCH_SELECTION_KEY = 'job-compass.search-selection.v1'
 
 export const EMPTY_SEARCH_SETTINGS: SearchSettings = {
   sites: [],
   roles: [],
+  includeKeywords: [],
+  excludeKeywords: [],
+}
+
+export const EMPTY_SEARCH_SELECTION: SearchSelection = {
+  siteIds: [],
+  roleIds: [],
   includeKeywords: [],
   excludeKeywords: [],
 }
@@ -81,4 +96,29 @@ export function loadSearchSettings(): SearchSettings {
 export function saveSearchSettings(settings: SearchSettings): void {
   const stored: StoredSearchSettings = { version: 1, ...settings }
   window.localStorage.setItem(SEARCH_SETTINGS_KEY, JSON.stringify(stored))
+}
+
+export function parseSearchSelection(value: string | null): SearchSelection {
+  if (!value) return EMPTY_SEARCH_SELECTION
+
+  try {
+    const parsed = JSON.parse(value) as Partial<SearchSelection> & { version?: number }
+    if (parsed.version !== 1) return EMPTY_SEARCH_SELECTION
+    return {
+      siteIds: cleanStringList(parsed.siteIds),
+      roleIds: cleanStringList(parsed.roleIds),
+      includeKeywords: cleanStringList(parsed.includeKeywords),
+      excludeKeywords: cleanStringList(parsed.excludeKeywords),
+    }
+  } catch {
+    return EMPTY_SEARCH_SELECTION
+  }
+}
+
+export function loadSearchSelection(): SearchSelection {
+  return parseSearchSelection(window.localStorage.getItem(SEARCH_SELECTION_KEY))
+}
+
+export function saveSearchSelection(selection: SearchSelection): void {
+  window.localStorage.setItem(SEARCH_SELECTION_KEY, JSON.stringify({ version: 1, ...selection }))
 }
