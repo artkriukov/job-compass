@@ -150,6 +150,7 @@ legend { margin-bottom: 11px; }
 .company-filter { display: grid; gap: 5px; }
 .company-filter > span { color: #68706c; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .company-filter select { width: auto; min-width: 210px; height: 38px; padding: 0 36px 0 12px; border-radius: 10px; font-size: 14px; }
+.company-filter select:disabled { cursor: not-allowed; opacity: .58; }
 .provider { padding: 8px 12px; border: 1px solid #c8ccc4; border-radius: 999px; color: #68706c; font-size: 12px; }
 .warnings { margin-bottom: 18px; padding: 12px 16px; border-radius: 10px; color: #785b12; background: #fff6d8; font-size: 13px; }
 .warnings p { margin: 4px 0; }

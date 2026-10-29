@@ -69,15 +69,17 @@ function Results({ result }: { result: SearchResponse }) {
           <h2>{selectedCompany ? `Показано: ${visibleVacancies.length} из ${result.vacancies.length}` : `Найдено: ${result.vacancies.length}`}</h2>
         </div>
         <div className="results-controls">
-          {companies.length > 0 ? (
-            <label className="company-filter">
-              <span>Компания</span>
-              <select value={selectedCompany} onChange={(event) => setSelectedCompany(event.target.value)}>
-                <option value="">Все компании</option>
-                {companies.map((company) => <option key={company} value={company}>{company}</option>)}
-              </select>
-            </label>
-          ) : null}
+          <label className="company-filter">
+            <span>Компания</span>
+            <select
+              value={selectedCompany}
+              onChange={(event) => setSelectedCompany(event.target.value)}
+              disabled={companies.length === 0}
+            >
+              <option value="">{companies.length > 0 ? 'Все компании' : 'Нет найденных компаний'}</option>
+              {companies.map((company) => <option key={company} value={company}>{company}</option>)}
+            </select>
+          </label>
           <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
         </div>
       </div>
