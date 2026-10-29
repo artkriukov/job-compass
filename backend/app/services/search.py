@@ -1,13 +1,13 @@
 from app.config import Settings
 from app.models import SearchRequest, SearchResponse
 from app.services.ai_job_search import AiJobSearchError, AiJobSearchProvider
-from app.services.html_search import HtmlSearchProvider
+from app.services.html_search import SiteCrawlerProvider
 
 
 class SearchService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.html = HtmlSearchProvider(max_results=settings.max_results)
+        self.crawler = SiteCrawlerProvider(max_results=settings.max_results)
         self.ai_job_search = (
             AiJobSearchProvider(
                 root=settings.ai_job_search_root,
@@ -45,12 +45,14 @@ class SearchService:
                 except AiJobSearchError as exc:
                     if self.settings.search_provider == "ai_job_search":
                         raise
-                    vacancies, warnings = await self.html.search(request)
+                    vacancies, warnings = await self.crawler.search(request)
                     warnings.insert(
-                        0, f"AI Job Search недоступен, использован HTML-поиск: {exc}"
+                        0, f"AI Job Search недоступен, использован поиск по карьерным сайтам: {exc}"
                     )
-                    return SearchResponse(provider="html", vacancies=vacancies, warnings=warnings)
+                    return SearchResponse(
+                        provider="site_crawler", vacancies=vacancies, warnings=warnings
+                    )
 
-        vacancies, warnings = await self.html.search(request)
-        return SearchResponse(provider="html", vacancies=vacancies, warnings=warnings)
+        vacancies, warnings = await self.crawler.search(request)
+        return SearchResponse(provider="site_crawler", vacancies=vacancies, warnings=warnings)
 

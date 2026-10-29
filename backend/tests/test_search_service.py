@@ -27,11 +27,11 @@ def vacancy() -> Vacancy:
 
 def test_html_mode_returns_results() -> None:
     service = SearchService(Settings(search_provider="html"))
-    service.html.search = AsyncMock(return_value=([vacancy()], []))
+    service.crawler.search = AsyncMock(return_value=([vacancy()], []))
 
     response = asyncio.run(service.search(request()))
 
-    assert response.provider == "html"
+    assert response.provider == "site_crawler"
     assert response.vacancies[0].title == "Developer"
 
 
@@ -58,11 +58,11 @@ def test_auto_mode_falls_back_to_html(tmp_path) -> None:  # noqa: ANN001
     assert service.ai_job_search is not None
     service.ai_job_search.is_ready = Mock(return_value=True)
     service.ai_job_search.search = AsyncMock(side_effect=AiJobSearchError("failed"))
-    service.html.search = AsyncMock(return_value=([vacancy()], []))
+    service.crawler.search = AsyncMock(return_value=([vacancy()], []))
 
     response = asyncio.run(service.search(request()))
 
-    assert response.provider == "html"
+    assert response.provider == "site_crawler"
     assert response.warnings == [
-        "AI Job Search недоступен, использован HTML-поиск: failed"
+        "AI Job Search недоступен, использован поиск по карьерным сайтам: failed"
     ]
