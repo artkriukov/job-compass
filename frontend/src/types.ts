@@ -9,7 +9,7 @@ export type Vacancy = {
 }
 
 export type SearchResponse = {
-  provider: 'ai_job_search' | 'html'
+  provider: 'ai_job_search' | 'site_crawler'
   vacancies: Vacancy[]
   warnings: string[]
 }
