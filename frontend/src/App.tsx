@@ -221,23 +221,20 @@ type SearchPageProps = {
 
 type SelectionItem = { id: string; label: string; meta?: string }
 
-function SelectionDropdown({ label, items, selectedIds, onToggle }: { label: string; items: SelectionItem[]; selectedIds: string[]; onToggle: (id: string) => void }) {
+function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onToggle }: { label: string; items: SelectionItem[]; selectedIds: string[]; open: boolean; onOpenChange: () => void; onToggle: (id: string) => void }) {
   return (
-    <fieldset className="selection-field">
+    <fieldset className="selection-field" onClick={(event) => event.stopPropagation()}>
       <legend>{label} <b>*</b></legend>
-      <details className="multi-select">
-        <summary><span>{selectedIds.length > 0 ? `Выбрано: ${selectedIds.length}` : 'Ничего не выбрано'}</span><i aria-hidden="true">⌄</i></summary>
-        <div className="multi-select-menu">
+      <div className={open ? 'multi-select open' : 'multi-select'}>
+        <button type="button" className="multi-select-trigger" onClick={onOpenChange} aria-expanded={open}><span>{selectedIds.length > 0 ? `Выбрано: ${selectedIds.length}` : 'Ничего не выбрано'}</span><i aria-hidden="true">⌄</i></button>
+        {open ? <div className="multi-select-menu">
           {items.map((item) => (
             <label className="multi-option" key={item.id}>
               <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => onToggle(item.id)} />
               <span><strong>{item.label}</strong>{item.meta ? <small>{item.meta}</small> : null}</span>
             </label>
           ))}
-        </div>
-      </details>
-      <div className="selection-preview">
-        {items.filter((item) => selectedIds.includes(item.id)).map((item) => <span key={item.id}>{item.label}<button type="button" onClick={() => onToggle(item.id)} aria-label={`Убрать ${item.label}`}>×</button></span>)}
+        </div> : null}
       </div>
     </fieldset>
   )
@@ -249,6 +246,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [openDropdown, setOpenDropdown] = useState<'sites' | 'roles' | null>(null)
 
   function toggleSelection(ids: string[], id: string): string[] {
     return ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]
@@ -280,7 +278,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
 
   const hasSettings = settings.sites.length > 0 && settings.roles.length > 0
   return (
-    <div className="page-content">
+    <div className="page-content" onClick={() => setOpenDropdown(null)}>
       <section className="page-heading search-heading"><p className="eyebrow">Поиск вакансий</p><h1>Соберите новый поиск.</h1><p className="lede">Выберите сохранённые источники и должность, добавьте фильтры и запустите поиск.</p></section>
       {!hasSettings ? (
         <section className="onboarding-card"><span>Нужны исходные данные</span><h2>Сначала добавьте сайты и должности</h2><p>Они сохранятся в браузере и будут доступны для следующих поисков.</p><button type="button" className="primary-button" onClick={onOpenSettings}>Открыть настройки <span>→</span></button></section>
@@ -288,8 +286,8 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
         <section className="search-workspace">
           <form className="search-form" onSubmit={handleSubmit}>
             <div className="selection-row">
-              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} />
-              <SelectionDropdown label="Должности" items={settings.roles.map((role) => ({ id: role.id, label: role.title }))} selectedIds={selectedRoleIds} onToggle={(id) => setSelectedRoleIds(toggleSelection(selectedRoleIds, id))} />
+              <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} open={openDropdown === 'sites'} onOpenChange={() => setOpenDropdown((current) => current === 'sites' ? null : 'sites')} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} />
+              <SelectionDropdown label="Должности" items={settings.roles.map((role) => ({ id: role.id, label: role.title }))} selectedIds={selectedRoleIds} open={openDropdown === 'roles'} onOpenChange={() => setOpenDropdown((current) => current === 'roles' ? null : 'roles')} onToggle={(id) => setSelectedRoleIds(toggleSelection(selectedRoleIds, id))} />
             </div>
             <div className="field-row">
               <label className="field"><span>Ключевые слова</span><input value={include} onChange={(event) => setInclude(event.target.value)} placeholder="remote, FastAPI" /><small>Через запятую</small></label>
