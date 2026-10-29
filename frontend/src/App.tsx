@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { searchVacancies } from './api'
-import { mergeSearchResponses, parseLines } from './form-utils'
+import { mergeSearchResponses } from './form-utils'
 import {
   loadSearchSettings,
   saveSearchSettings,
@@ -84,6 +84,9 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [siteFormOpen, setSiteFormOpen] = useState(false)
   const [roleFormOpen, setRoleFormOpen] = useState(false)
+  const [filterFormOpen, setFilterFormOpen] = useState(false)
+  const [includeKeyword, setIncludeKeyword] = useState('')
+  const [excludeKeyword, setExcludeKeyword] = useState('')
 
   function resetSiteForm() {
     setSiteName('')
@@ -135,6 +138,24 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
     setRoleTitle('')
     setEditingRoleId(null)
     setRoleFormOpen(false)
+    setError(null)
+  }
+
+  function handleIncludeKeywordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const keyword = includeKeyword.trim().toLowerCase()
+    if (!keyword || settings.includeKeywords.includes(keyword)) return
+    onChange({ ...settings, includeKeywords: [...settings.includeKeywords, keyword] })
+    setIncludeKeyword('')
+    setError(null)
+  }
+
+  function handleExcludeKeywordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const keyword = excludeKeyword.trim().toLowerCase()
+    if (!keyword || settings.excludeKeywords.includes(keyword)) return
+    onChange({ ...settings, excludeKeywords: [...settings.excludeKeywords, keyword] })
+    setExcludeKeyword('')
     setError(null)
   }
 
@@ -200,6 +221,27 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
             ))}
           </div>
         </section>
+
+        <section className="collection-panel" aria-labelledby="filters-title">
+          <div className="section-heading">
+            <div><h2 id="filters-title">Ключевые слова и исключения</h2><p>{settings.includeKeywords.length + settings.excludeKeywords.length} сохранено</p></div>
+            <button type="button" className={filterFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => setFilterFormOpen((open) => !open)} aria-expanded={filterFormOpen} aria-label={filterFormOpen ? 'Закрыть настройки фильтров' : 'Настроить фильтры'}>+</button>
+          </div>
+          {filterFormOpen ? <div className="compact-form filter-form">
+            <form className="keyword-add-form" onSubmit={handleIncludeKeywordSubmit}>
+              <label className="field"><span>Добавить ключевое слово или фразу</span><input value={includeKeyword} onChange={(event) => setIncludeKeyword(event.target.value)} placeholder="Например: Service Desk" required /></label>
+              <button type="submit" className="primary-button">Добавить <span>+</span></button>
+            </form>
+            <form className="keyword-add-form" onSubmit={handleExcludeKeywordSubmit}>
+              <label className="field"><span>Добавить слово-исключение</span><input value={excludeKeyword} onChange={(event) => setExcludeKeyword(event.target.value)} placeholder="Например: продажи" required /></label>
+              <button type="submit" className="primary-button">Добавить <span>+</span></button>
+            </form>
+          </div> : null}
+          <div className="filter-summary">
+            <div><strong>Ключевые слова</strong><div className="keyword-list">{settings.includeKeywords.length > 0 ? settings.includeKeywords.map((keyword) => <span key={keyword}>{keyword}<button type="button" onClick={() => onChange({ ...settings, includeKeywords: settings.includeKeywords.filter((item) => item !== keyword) })} aria-label={`Удалить ${keyword}`}>×</button></span>) : <em>Не заданы</em>}</div></div>
+            <div><strong>Исключения</strong><div className="keyword-list exclusions">{settings.excludeKeywords.length > 0 ? settings.excludeKeywords.map((keyword) => <span key={keyword}>{keyword}<button type="button" onClick={() => onChange({ ...settings, excludeKeywords: settings.excludeKeywords.filter((item) => item !== keyword) })} aria-label={`Удалить ${keyword}`}>×</button></span>) : <em>Не заданы</em>}</div></div>
+          </div>
+        </section>
       </div>
 
       <section className="ready-banner">
@@ -216,6 +258,10 @@ type SearchPageProps = {
   setSelectedSiteIds: (ids: string[]) => void
   selectedRoleIds: string[]
   setSelectedRoleIds: (ids: string[]) => void
+  selectedIncludeKeywords: string[]
+  setSelectedIncludeKeywords: (keywords: string[]) => void
+  selectedExcludeKeywords: string[]
+  setSelectedExcludeKeywords: (keywords: string[]) => void
   onOpenSettings: () => void
 }
 
@@ -240,13 +286,11 @@ function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onTo
   )
 }
 
-function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, onOpenSettings }: SearchPageProps) {
-  const [include, setInclude] = useState('')
-  const [exclude, setExclude] = useState('')
+function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, selectedIncludeKeywords, setSelectedIncludeKeywords, selectedExcludeKeywords, setSelectedExcludeKeywords, onOpenSettings }: SearchPageProps) {
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [openDropdown, setOpenDropdown] = useState<'sites' | 'roles' | null>(null)
+  const [openDropdown, setOpenDropdown] = useState<'sites' | 'roles' | 'include' | 'exclude' | null>(null)
 
   function toggleSelection(ids: string[], id: string): string[] {
     return ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]
@@ -265,9 +309,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     const controller = new AbortController()
     setLoading(true)
     try {
-      const includeKeywords = parseLines(include)
-      const excludeKeywords = parseLines(exclude)
-      const responses = await Promise.all(roles.map((role) => searchVacancies({ sites, role: role.title, include_keywords: includeKeywords, exclude_keywords: excludeKeywords }, controller.signal)))
+      const responses = await Promise.all(roles.map((role) => searchVacancies({ sites, role: role.title, include_keywords: selectedIncludeKeywords, exclude_keywords: selectedExcludeKeywords }, controller.signal)))
       setResult(mergeSearchResponses(responses))
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить поиск.')
@@ -289,9 +331,9 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
               <SelectionDropdown label="Где искать" items={settings.sites.map((site) => ({ id: site.id, label: site.name, meta: new URL(site.url).hostname }))} selectedIds={selectedSiteIds} open={openDropdown === 'sites'} onOpenChange={() => setOpenDropdown((current) => current === 'sites' ? null : 'sites')} onToggle={(id) => setSelectedSiteIds(toggleSelection(selectedSiteIds, id))} />
               <SelectionDropdown label="Должности" items={settings.roles.map((role) => ({ id: role.id, label: role.title }))} selectedIds={selectedRoleIds} open={openDropdown === 'roles'} onOpenChange={() => setOpenDropdown((current) => current === 'roles' ? null : 'roles')} onToggle={(id) => setSelectedRoleIds(toggleSelection(selectedRoleIds, id))} />
             </div>
-            <div className="field-row">
-              <label className="field"><span>Ключевые слова</span><input value={include} onChange={(event) => setInclude(event.target.value)} placeholder="remote, FastAPI" /><small>Через запятую</small></label>
-              <label className="field"><span>Исключить</span><input value={exclude} onChange={(event) => setExclude(event.target.value)} placeholder="senior, relocation" /><small>Через запятую</small></label>
+            <div className="selection-row filter-selection-row">
+              <SelectionDropdown label="Ключевые слова" items={settings.includeKeywords.map((keyword) => ({ id: keyword, label: keyword }))} selectedIds={selectedIncludeKeywords} open={openDropdown === 'include'} onOpenChange={() => setOpenDropdown((current) => current === 'include' ? null : 'include')} onToggle={(keyword) => setSelectedIncludeKeywords(toggleSelection(selectedIncludeKeywords, keyword))} />
+              <SelectionDropdown label="Исключения" items={settings.excludeKeywords.map((keyword) => ({ id: keyword, label: keyword }))} selectedIds={selectedExcludeKeywords} open={openDropdown === 'exclude'} onOpenChange={() => setOpenDropdown((current) => current === 'exclude' ? null : 'exclude')} onToggle={(keyword) => setSelectedExcludeKeywords(toggleSelection(selectedExcludeKeywords, keyword))} />
             </div>
             {error ? <p className="error" role="alert">{error}</p> : null}
             <button type="submit" className="primary-button search-button" disabled={loading}>{loading ? <><span className="spinner" /> Ищем по выбранным должностям…</> : <>Найти вакансии <span>→</span></>}</button>
@@ -308,12 +350,16 @@ export default function App() {
   const [settings, setSettings] = useState<SearchSettings>(loadSearchSettings)
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(() => settings.sites.map((site) => site.id))
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(() => settings.roles.map((role) => role.id))
+  const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(() => settings.includeKeywords)
+  const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(() => settings.excludeKeywords)
 
   function updateSettings(nextSettings: SearchSettings) {
     setSettings(nextSettings)
     saveSearchSettings(nextSettings)
     setSelectedSiteIds((current) => current.filter((id) => nextSettings.sites.some((site) => site.id === id)))
     setSelectedRoleIds((current) => current.filter((id) => nextSettings.roles.some((role) => role.id === id)))
+    setSelectedIncludeKeywords(nextSettings.includeKeywords)
+    setSelectedExcludeKeywords(nextSettings.excludeKeywords)
   }
 
   return (
@@ -328,7 +374,7 @@ export default function App() {
       </aside>
       <main className="main-area">
         <header className="mobile-topbar"><button type="button" className="brand" onClick={() => setPage('search')}><span className="brand-mark">JC</span><span>Job Compass</span></button></header>
-        {page === 'settings' ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} /> : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} onOpenSettings={() => setPage('settings')} />}
+        {page === 'settings' ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} /> : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} onOpenSettings={() => setPage('settings')} />}
         <footer><span>Job Compass</span><p>Собирает ссылки. Решение об отклике всегда остаётся за вами.</p></footer>
       </main>
     </div>

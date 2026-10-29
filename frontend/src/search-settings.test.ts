@@ -7,9 +7,13 @@ describe('parseSearchSettings', () => {
       version: 1,
       sites: [{ id: 'site-1', name: 'Яндекс', url: 'https://yandex.ru/jobs' }],
       roles: [{ id: 'role-1', title: 'Python developer' }],
+      includeKeywords: ['Remote', 'Linux'],
+      excludeKeywords: ['Senior'],
     }))).toEqual({
       sites: [{ id: 'site-1', name: 'Яндекс', url: 'https://yandex.ru/jobs' }],
       roles: [{ id: 'role-1', title: 'Python developer' }],
+      includeKeywords: ['remote', 'linux'],
+      excludeKeywords: ['senior'],
     })
   })
 
@@ -23,6 +27,9 @@ describe('parseSearchSettings', () => {
       version: 1,
       sites: [{ id: '', name: 'Bad', url: 'https://bad.test' }],
       roles: [{ id: 'good', title: 'Data analyst' }, { id: 'bad', title: '' }],
-    }))).toEqual({ sites: [], roles: [{ id: 'good', title: 'Data analyst' }] })
+    }))).toEqual({
+      sites: [], roles: [{ id: 'good', title: 'Data analyst' }],
+      includeKeywords: [], excludeKeywords: [],
+    })
   })
 })
