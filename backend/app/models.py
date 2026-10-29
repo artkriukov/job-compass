@@ -1,0 +1,52 @@
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field, HttpUrl, field_validator
+
+
+class SearchRequest(BaseModel):
+    sites: Annotated[list[HttpUrl], Field(min_length=1, max_length=50)]
+    role: Annotated[str, Field(min_length=2, max_length=160)]
+    include_keywords: Annotated[list[str], Field(max_length=20)] = Field(default_factory=list)
+    exclude_keywords: Annotated[list[str], Field(max_length=20)] = Field(default_factory=list)
+
+    @field_validator("sites")
+    @classmethod
+    def unique_sites(cls, sites: list[HttpUrl]) -> list[HttpUrl]:
+        unique: dict[str, HttpUrl] = {}
+        for site in sites:
+            unique[str(site)] = site
+        return list(unique.values())
+
+    @field_validator("role")
+    @classmethod
+    def clean_role(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("include_keywords", "exclude_keywords")
+    @classmethod
+    def clean_keywords(cls, values: list[str]) -> list[str]:
+        cleaned = {" ".join(value.split()).lower() for value in values if value.strip()}
+        return sorted(cleaned)
+
+
+class Vacancy(BaseModel):
+    title: str
+    company: str | None = None
+    location: str | None = None
+    url: HttpUrl
+    score: int = Field(ge=0, le=100)
+    reason: str
+    source_site: HttpUrl
+
+
+class SearchResponse(BaseModel):
+    provider: Literal["ai_job_search", "html"]
+    vacancies: list[Vacancy]
+    warnings: list[str] = Field(default_factory=list)
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    configured_provider: Literal["auto", "ai_job_search", "html"]
+    ai_job_search_ready: bool
+
