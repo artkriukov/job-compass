@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   backend:
@@ -49,21 +48,3 @@ jobs:
         with:
           files: compose.yaml
           load: false
-
-  create-pull-request:
-    if: github.event_name == 'push' && github.ref_name != 'main'
-    needs: [backend, frontend, docker]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create pull request if missing
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! gh pr view "$GITHUB_REF_NAME" --json url >/dev/null 2>&1; then
-            gh pr create \
-              --base main \
-              --head "$GITHUB_REF_NAME" \
-              --title "Job Compass: ${GITHUB_REF_NAME}" \
-              --body "Automated pull request created after backend, frontend, and Docker checks passed."
-          fi
