@@ -77,16 +77,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--lime-dark); box-
 .text-link:hover, .text-button:hover { text-decoration: underline; text-underline-offset: 4px; }
 button:focus-visible, a:focus-visible { outline: 3px solid #6c9500; outline-offset: 3px; }
 
-.saved-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 10px; padding: 18px 28px 24px; }
-.saved-item { position: relative; display: grid; align-content: end; min-width: 0; min-height: 118px; padding: 14px; border: 1px solid #dde0d9; border-radius: 13px; background: #fff; }
+.saved-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 9px; padding: 18px 28px 24px; }
+.saved-item { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; min-height: 58px; padding: 9px 8px 9px 10px; border: 1px solid #dde0d9; border-radius: 11px; background: #fff; }
 .saved-item:hover { border-color: #c5cabf; box-shadow: 0 8px 24px #27352d0b; }
-.saved-icon { position: absolute; top: 12px; left: 12px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #354200; background: #e7f8bf; font: 800 10px Manrope, sans-serif; }
+.saved-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: #354200; background: #e7f8bf; font: 800 9px Manrope, sans-serif; }
 .role-icon { color: #23455a; background: #dceef6; }
 .saved-copy { min-width: 0; }
 .saved-copy h3 { margin: 0; overflow: hidden; font-size: 13px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-.item-actions { position: absolute; top: 11px; right: 9px; display: flex; gap: 2px; }
-.item-button { display: grid; place-items: center; width: 27px; height: 27px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 7px; color: #65706a; background: transparent; }
-.item-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.item-actions { display: flex; flex: 0 0 auto; gap: 1px; }
+.item-button { display: grid; place-items: center; width: 23px; height: 26px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 6px; color: #65706a; background: transparent; }
+.item-button svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .item-button:hover { color: var(--ink); background: #e5e8e1; }
 .item-button.danger { color: #9b422f; background: transparent; }
 .item-button.danger:hover { color: #762815; background: #ffe7df; }
@@ -185,7 +185,7 @@ footer p { margin: 0; }
   .site-form { grid-template-columns: 1fr; }
   .site-form .form-actions { grid-column: auto; }
   .form-actions { align-items: stretch; flex-direction: column; }
-  .saved-list { grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); }
+  .saved-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .results-heading { align-items: flex-start; flex-direction: column; }
   .vacancy-card { grid-template-columns: 48px 1fr; gap: 14px; padding: 18px; }
   .score { width: 46px; height: 46px; font-size: 14px; }
