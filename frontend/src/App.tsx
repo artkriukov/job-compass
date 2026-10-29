@@ -74,11 +74,14 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
   const [roleTitle, setRoleTitle] = useState('')
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [siteFormOpen, setSiteFormOpen] = useState(false)
+  const [roleFormOpen, setRoleFormOpen] = useState(false)
 
   function resetSiteForm() {
     setSiteName('')
     setSiteUrl('')
     setEditingSiteId(null)
+    setSiteFormOpen(false)
   }
 
   function handleSiteSubmit(event: FormEvent<HTMLFormElement>) {
@@ -105,6 +108,7 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
     setSiteName(site.name)
     setSiteUrl(site.url)
     setEditingSiteId(site.id)
+    setSiteFormOpen(true)
     setError(null)
   }
 
@@ -122,6 +126,7 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
     onChange({ ...settings, roles })
     setRoleTitle('')
     setEditingRoleId(null)
+    setRoleFormOpen(false)
     setError(null)
   }
 
@@ -136,23 +141,26 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
 
       <div className="settings-grid">
         <section className="collection-panel" aria-labelledby="sites-title">
-          <div className="section-heading"><div><span>01</span><h2 id="sites-title">Карьерные сайты</h2></div><b>{settings.sites.length}</b></div>
-          <form className="compact-form" onSubmit={handleSiteSubmit}>
+          <div className="section-heading">
+            <div><span>01</span><div><h2 id="sites-title">Карьерные сайты</h2><p>{settings.sites.length} сохранено</p></div></div>
+            <button type="button" className={siteFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => { if (siteFormOpen) resetSiteForm(); else setSiteFormOpen(true) }} aria-expanded={siteFormOpen} aria-label={siteFormOpen ? 'Закрыть форму сайта' : 'Добавить карьерный сайт'}>+</button>
+          </div>
+          {siteFormOpen ? <form className="compact-form site-form" onSubmit={handleSiteSubmit}>
             <label className="field"><span>Название компании</span><input value={siteName} onChange={(event) => setSiteName(event.target.value)} placeholder="Например: Яндекс" required /></label>
             <label className="field"><span>Ссылка на вакансии</span><input value={siteUrl} onChange={(event) => setSiteUrl(event.target.value)} placeholder="https://company.ru/jobs" inputMode="url" required /></label>
             <div className="form-actions">
               <button type="submit" className="primary-button">{editingSiteId ? 'Сохранить изменения' : 'Добавить сайт'} <span>→</span></button>
               {editingSiteId ? <button type="button" className="text-button" onClick={resetSiteForm}>Отмена</button> : null}
             </div>
-          </form>
+          </form> : null}
           <div className="saved-list">
             {settings.sites.length === 0 ? <p className="list-empty">Пока нет сохранённых сайтов.</p> : settings.sites.map((site) => (
               <article className="saved-item" key={site.id}>
                 <div className="saved-icon">{site.name.slice(0, 2).toUpperCase()}</div>
                 <div className="saved-copy"><h3>{site.name}</h3><a href={site.url} target="_blank" rel="noreferrer">{site.url}</a></div>
                 <div className="item-actions">
-                  <button type="button" className="icon-button" onClick={() => editSite(site)} aria-label={`Редактировать ${site.name}`}>✎</button>
-                  <button type="button" className="icon-button danger" onClick={() => onChange({ ...settings, sites: settings.sites.filter((item) => item.id !== site.id) })} aria-label={`Удалить ${site.name}`}>×</button>
+                  <button type="button" className="item-button" onClick={() => editSite(site)}>Редактировать</button>
+                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, sites: settings.sites.filter((item) => item.id !== site.id) })}>Удалить</button>
                 </div>
               </article>
             ))}
@@ -160,22 +168,25 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
         </section>
 
         <section className="collection-panel" aria-labelledby="roles-title">
-          <div className="section-heading"><div><span>02</span><h2 id="roles-title">Искомые должности</h2></div><b>{settings.roles.length}</b></div>
-          <form className="compact-form role-form" onSubmit={handleRoleSubmit}>
+          <div className="section-heading">
+            <div><span>02</span><div><h2 id="roles-title">Искомые должности</h2><p>{settings.roles.length} сохранено</p></div></div>
+            <button type="button" className={roleFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => { setRoleFormOpen((open) => !open); if (roleFormOpen) { setEditingRoleId(null); setRoleTitle('') } }} aria-expanded={roleFormOpen} aria-label={roleFormOpen ? 'Закрыть форму должности' : 'Добавить должность'}>+</button>
+          </div>
+          {roleFormOpen ? <form className="compact-form role-form" onSubmit={handleRoleSubmit}>
             <label className="field"><span>Название должности</span><input value={roleTitle} onChange={(event) => setRoleTitle(event.target.value)} placeholder="Python backend developer" minLength={2} required /></label>
             <div className="form-actions">
               <button type="submit" className="primary-button">{editingRoleId ? 'Сохранить изменения' : 'Добавить должность'} <span>→</span></button>
-              {editingRoleId ? <button type="button" className="text-button" onClick={() => { setEditingRoleId(null); setRoleTitle('') }}>Отмена</button> : null}
+              {editingRoleId ? <button type="button" className="text-button" onClick={() => { setEditingRoleId(null); setRoleTitle(''); setRoleFormOpen(false) }}>Отмена</button> : null}
             </div>
-          </form>
+          </form> : null}
           <div className="saved-list roles-list">
             {settings.roles.length === 0 ? <p className="list-empty">Добавьте один или несколько вариантов должности.</p> : settings.roles.map((role) => (
               <article className="saved-item saved-role" key={role.id}>
-                <div className="role-dot" />
+                <div className="saved-icon role-icon">{role.title.slice(0, 2).toUpperCase()}</div>
                 <div className="saved-copy"><h3>{role.title}</h3><p>Вариант поискового запроса</p></div>
                 <div className="item-actions">
-                  <button type="button" className="icon-button" onClick={() => { setEditingRoleId(role.id); setRoleTitle(role.title); setError(null) }} aria-label={`Редактировать ${role.title}`}>✎</button>
-                  <button type="button" className="icon-button danger" onClick={() => onChange({ ...settings, roles: settings.roles.filter((item) => item.id !== role.id) })} aria-label={`Удалить ${role.title}`}>×</button>
+                  <button type="button" className="item-button" onClick={() => { setEditingRoleId(role.id); setRoleTitle(role.title); setRoleFormOpen(true); setError(null) }}>Редактировать</button>
+                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, roles: settings.roles.filter((item) => item.id !== role.id) })}>Удалить</button>
                 </div>
               </article>
             ))}
