@@ -40,7 +40,7 @@ class Vacancy(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    provider: Literal["ai_job_search", "html"]
+    provider: Literal["ai_job_search", "site_crawler"]
     vacancies: list[Vacancy]
     warnings: list[str] = Field(default_factory=list)
 

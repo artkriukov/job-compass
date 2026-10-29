@@ -7,7 +7,7 @@ from app.models import SearchResponse, Vacancy
 class FakeService:
     async def search(self, request):  # noqa: ANN001
         return SearchResponse(
-            provider="html",
+            provider="site_crawler",
             vacancies=[
                 Vacancy(
                     title=request.role,
