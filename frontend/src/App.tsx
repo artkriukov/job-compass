@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent } from 'react'
 import {
   createRemoteApplication,
   deleteRemoteApplication,
@@ -25,6 +25,8 @@ import {
   mergeSearchResponses,
 } from './form-utils'
 import {
+  filterCareerSites,
+  getCareerSiteHostname,
   loadSearchSettings,
   loadSearchSelection,
   saveSearchSelection,
@@ -37,6 +39,9 @@ import type { SearchResponse, Vacancy } from './types'
 import './styles.css'
 
 type Page = 'search' | 'applications' | 'settings'
+type SettingsSection = 'sites' | 'roles' | 'keywords'
+
+const SETTINGS_SECTIONS: SettingsSection[] = ['sites', 'roles', 'keywords']
 
 function createId(): string {
   return crypto.randomUUID()
@@ -202,8 +207,12 @@ type SettingsPageProps = {
 }
 
 function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('sites')
   const [siteName, setSiteName] = useState('')
   const [siteUrl, setSiteUrl] = useState('')
+  const [siteQuery, setSiteQuery] = useState('')
+  const [openSiteMenuId, setOpenSiteMenuId] = useState<string | null>(null)
+  const [confirmingSiteId, setConfirmingSiteId] = useState<string | null>(null)
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null)
   const [roleTitle, setRoleTitle] = useState('')
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null)
@@ -213,6 +222,31 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
   const [filterFormOpen, setFilterFormOpen] = useState(false)
   const [includeKeyword, setIncludeKeyword] = useState('')
   const [excludeKeyword, setExcludeKeyword] = useState('')
+  const visibleSites = filterCareerSites(settings.sites, siteQuery)
+
+  function closeSiteMenu() {
+    setOpenSiteMenuId(null)
+    setConfirmingSiteId(null)
+  }
+
+  function selectSettingsSection(section: SettingsSection) {
+    setSettingsSection(section)
+    closeSiteMenu()
+  }
+
+  function handleSettingsTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, section: SettingsSection) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const currentIndex = SETTINGS_SECTIONS.indexOf(section)
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? SETTINGS_SECTIONS.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + SETTINGS_SECTIONS.length) % SETTINGS_SECTIONS.length
+    const nextSection = SETTINGS_SECTIONS[nextIndex]
+    selectSettingsSection(nextSection)
+    document.getElementById(`settings-tab-${nextSection}`)?.focus()
+  }
 
   function resetSiteForm() {
     setSiteName('')
@@ -247,6 +281,12 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
     setEditingSiteId(site.id)
     setSiteFormOpen(true)
     setError(null)
+    closeSiteMenu()
+  }
+
+  function removeSite(siteId: string) {
+    onChange({ ...settings, sites: settings.sites.filter((site) => site.id !== siteId) })
+    closeSiteMenu()
   }
 
   function handleRoleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -286,7 +326,7 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
   }
 
   return (
-    <div className="page-content">
+    <div className="page-content" onClick={closeSiteMenu}>
       <section className="page-heading">
         <p className="eyebrow">Постоянные настройки</p>
         <h1>Источники и должности</h1>
@@ -294,8 +334,14 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
       </section>
       {error ? <p className="error page-error" role="alert">{error}</p> : null}
 
+      <div className="settings-tabs" role="tablist" aria-label="Разделы настроек">
+        <button id="settings-tab-sites" type="button" role="tab" aria-selected={settingsSection === 'sites'} aria-controls="settings-panel-sites" className={settingsSection === 'sites' ? 'active' : ''} onClick={() => selectSettingsSection('sites')} onKeyDown={(event) => handleSettingsTabKeyDown(event, 'sites')}>Карьерные сайты <b>{settings.sites.length}</b></button>
+        <button id="settings-tab-roles" type="button" role="tab" aria-selected={settingsSection === 'roles'} aria-controls="settings-panel-roles" className={settingsSection === 'roles' ? 'active' : ''} onClick={() => selectSettingsSection('roles')} onKeyDown={(event) => handleSettingsTabKeyDown(event, 'roles')}>Должности <b>{settings.roles.length}</b></button>
+        <button id="settings-tab-keywords" type="button" role="tab" aria-selected={settingsSection === 'keywords'} aria-controls="settings-panel-keywords" className={settingsSection === 'keywords' ? 'active' : ''} onClick={() => selectSettingsSection('keywords')} onKeyDown={(event) => handleSettingsTabKeyDown(event, 'keywords')}>Ключевые слова <b>{settings.includeKeywords.length + settings.excludeKeywords.length}</b></button>
+      </div>
+
       <div className="settings-grid">
-        <section className="collection-panel" aria-labelledby="sites-title">
+        {settingsSection === 'sites' ? <section id="settings-panel-sites" className="collection-panel sites-panel" role="tabpanel" aria-labelledby="settings-tab-sites">
           <div className="section-heading">
             <div><h2 id="sites-title">Карьерные сайты</h2><p>{settings.sites.length} сохранено</p></div>
             <button type="button" className={siteFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => { if (siteFormOpen) resetSiteForm(); else setSiteFormOpen(true) }} aria-expanded={siteFormOpen} aria-label={siteFormOpen ? 'Закрыть форму сайта' : 'Добавить карьерный сайт'}>+</button>
@@ -308,21 +354,36 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
               {editingSiteId ? <button type="button" className="text-button" onClick={resetSiteForm}>Отмена</button> : null}
             </div>
           </form> : null}
-          <div className="saved-list">
-            {settings.sites.length === 0 ? <p className="list-empty">Пока нет сохранённых сайтов.</p> : settings.sites.map((site) => (
-              <article className="saved-item" key={site.id}>
+          {settings.sites.length > 0 ? <div className="site-toolbar">
+            <label className="site-search">
+              <span aria-hidden="true">⌕</span>
+              <input type="search" name="site-search" value={siteQuery} onChange={(event) => setSiteQuery(event.target.value)} placeholder="Найти по названию или домену…" autoComplete="off" spellCheck={false} aria-label="Поиск карьерных сайтов" />
+              {siteQuery ? <button type="button" onClick={() => setSiteQuery('')} aria-label="Очистить поиск">×</button> : null}
+            </label>
+            <span className="site-search-summary" aria-live="polite">Показано: {visibleSites.length} из {settings.sites.length}</span>
+          </div> : null}
+          <div className="saved-list sites-list">
+            {settings.sites.length === 0 ? <p className="list-empty">Пока нет сохранённых сайтов.</p> : visibleSites.length === 0 ? <div className="list-empty"><p>По запросу «{siteQuery.trim()}» ничего не найдено.</p><button type="button" className="text-button" onClick={() => setSiteQuery('')}>Очистить поиск</button></div> : visibleSites.map((site) => (
+              <article className="saved-item saved-site" key={site.id}>
                 <div className="saved-icon">{site.name.slice(0, 2).toUpperCase()}</div>
-                <div className="saved-copy"><h3>{site.name}</h3></div>
-                <div className="item-actions">
-                  <button type="button" className="item-button" onClick={() => editSite(site)} aria-label={`Редактировать ${site.name}`} title="Редактировать"><EditIcon /></button>
-                  <button type="button" className="item-button danger" onClick={() => onChange({ ...settings, sites: settings.sites.filter((item) => item.id !== site.id) })} aria-label={`Удалить ${site.name}`} title="Удалить"><TrashIcon /></button>
+                <div className="saved-copy"><h3 title={site.name}>{site.name}</h3><small title={getCareerSiteHostname(site.url)}>{getCareerSiteHostname(site.url)}</small></div>
+                <div className="site-actions" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" className="site-menu-trigger" onClick={() => { setOpenSiteMenuId((current) => current === site.id ? null : site.id); setConfirmingSiteId(null) }} aria-label={`Действия для ${site.name}`} aria-haspopup="menu" aria-expanded={openSiteMenuId === site.id}>⋯</button>
+                  {openSiteMenuId === site.id ? confirmingSiteId === site.id ? <div className="site-actions-menu site-delete-confirm" role="dialog" aria-label={`Удалить ${site.name}?`} onKeyDown={(event) => { if (event.key === 'Escape') closeSiteMenu() }}>
+                    <strong>Удалить сайт?</strong>
+                    <p>«{site.name}» исчезнет из сохранённых источников.</p>
+                    <div><button type="button" className="site-menu-action" onClick={closeSiteMenu}>Отмена</button><button type="button" className="site-menu-action danger" onClick={() => removeSite(site.id)}>Удалить</button></div>
+                  </div> : <div className="site-actions-menu" role="menu" onKeyDown={(event) => { if (event.key === 'Escape') closeSiteMenu() }}>
+                    <button type="button" className="site-menu-action" role="menuitem" onClick={() => editSite(site)}><EditIcon /><span>Редактировать</span></button>
+                    <button type="button" className="site-menu-action danger" role="menuitem" onClick={() => setConfirmingSiteId(site.id)}><TrashIcon /><span>Удалить</span></button>
+                  </div> : null}
                 </div>
               </article>
             ))}
           </div>
-        </section>
+        </section> : null}
 
-        <section className="collection-panel" aria-labelledby="roles-title">
+        {settingsSection === 'roles' ? <section id="settings-panel-roles" className="collection-panel" role="tabpanel" aria-labelledby="settings-tab-roles">
           <div className="section-heading">
             <div><h2 id="roles-title">Искомые должности</h2><p>{settings.roles.length} сохранено</p></div>
             <button type="button" className={roleFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => { setRoleFormOpen((open) => !open); if (roleFormOpen) { setEditingRoleId(null); setRoleTitle('') } }} aria-expanded={roleFormOpen} aria-label={roleFormOpen ? 'Закрыть форму должности' : 'Добавить должность'}>+</button>
@@ -346,9 +407,9 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
               </article>
             ))}
           </div>
-        </section>
+        </section> : null}
 
-        <section className="collection-panel" aria-labelledby="filters-title">
+        {settingsSection === 'keywords' ? <section id="settings-panel-keywords" className="collection-panel" role="tabpanel" aria-labelledby="settings-tab-keywords">
           <div className="section-heading">
             <div><h2 id="filters-title">Ключевые слова и исключения</h2><p>{settings.includeKeywords.length + settings.excludeKeywords.length} сохранено</p></div>
             <button type="button" className={filterFormOpen ? 'add-toggle open' : 'add-toggle'} onClick={() => setFilterFormOpen((open) => !open)} aria-expanded={filterFormOpen} aria-label={filterFormOpen ? 'Закрыть настройки фильтров' : 'Настроить фильтры'}>+</button>
@@ -367,7 +428,7 @@ function SettingsPage({ settings, onChange, onOpenSearch }: SettingsPageProps) {
             <div><strong>Ключевые слова</strong><div className="keyword-list">{settings.includeKeywords.length > 0 ? settings.includeKeywords.map((keyword) => <span key={keyword}>{keyword}<button type="button" onClick={() => onChange({ ...settings, includeKeywords: settings.includeKeywords.filter((item) => item !== keyword) })} aria-label={`Удалить ${keyword}`}>×</button></span>) : <em>Не заданы</em>}</div></div>
             <div><strong>Исключения</strong><div className="keyword-list exclusions">{settings.excludeKeywords.length > 0 ? settings.excludeKeywords.map((keyword) => <span key={keyword}>{keyword}<button type="button" onClick={() => onChange({ ...settings, excludeKeywords: settings.excludeKeywords.filter((item) => item !== keyword) })} aria-label={`Удалить ${keyword}`}>×</button></span>) : <em>Не заданы</em>}</div></div>
           </div>
-        </section>
+        </section> : null}
       </div>
 
       <section className="ready-banner">
