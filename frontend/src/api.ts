@@ -1,4 +1,4 @@
-import type { ResumeSnapshot, SearchResponse } from './types'
+import type { CompatibilityResult, ResumeSnapshot, SearchResponse } from './types'
 import type { SearchSettings } from './search-settings'
 import type { JobApplication } from './applications'
 import type { Vacancy } from './types'
@@ -150,5 +150,21 @@ export async function uploadResume(file: File): Promise<ResumeSnapshot> {
     throw new Error(body?.detail ?? `Не удалось загрузить резюме: ${response.status}`)
   }
   return response.json() as Promise<ResumeSnapshot>
+}
+
+export async function checkCompatibility(
+  vacancy: Vacancy,
+  targetRoles: string[],
+): Promise<CompatibilityResult> {
+  const response = await fetch('/api/career-ops/compatibility', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vacancy, target_roles: targetRoles }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Не удалось проверить совместимость: ${response.status}`)
+  }
+  return response.json() as Promise<CompatibilityResult>
 }
 

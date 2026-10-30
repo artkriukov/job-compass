@@ -8,6 +8,8 @@ from app.config import Settings, get_settings
 from app.models import (
     ApplicationCreate,
     ApplicationUpdate,
+    CompatibilityRequest,
+    CompatibilityResult,
     HealthResponse,
     JobApplication,
     ResumeSnapshot,
@@ -17,7 +19,7 @@ from app.models import (
 )
 from app.services.ai_job_search import AiJobSearchError
 from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
-from app.services.career_ops import CareerOpsProvider
+from app.services.career_ops import CareerOpsError, CareerOpsProvider
 from app.services.resume_store import (
     MAX_RESUME_BYTES,
     ResumeStorageError,
@@ -68,6 +70,7 @@ def get_career_ops_provider(settings: SettingsDependency) -> CareerOpsProvider:
         codex_bin=settings.codex_bin,
         node_bin=settings.node_bin,
         doctor_timeout_seconds=settings.career_ops_doctor_timeout_seconds,
+        analysis_timeout_seconds=settings.career_ops_analysis_timeout_seconds,
     )
 
 
@@ -117,6 +120,16 @@ async def upload_resume(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ResumeStorageError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/career-ops/compatibility", response_model=CompatibilityResult)
+async def check_compatibility(
+    payload: CompatibilityRequest, career_ops: CareerOpsDependency
+) -> CompatibilityResult:
+    try:
+        return career_ops.evaluate(payload)
+    except CareerOpsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/search", response_model=SearchResponse)

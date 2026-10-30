@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import {
   createRemoteApplication,
+  checkCompatibility,
   deleteRemoteApplication,
   getRemoteApplications,
   getRemoteSearchSettings,
@@ -37,7 +38,8 @@ import {
   type SavedRole,
   type SearchSettings,
 } from './search-settings'
-import type { ResumeSnapshot, SearchResponse, Vacancy } from './types'
+import type { CompatibilityResult, ResumeSnapshot, SearchResponse, Vacancy } from './types'
+import { compatibilityPlainText } from './compatibility'
 import './styles.css'
 
 type Page = 'search' | 'applications' | 'resume' | 'settings'
@@ -127,7 +129,7 @@ function SingleSelect({ ariaLabel, className = '', value, options, open, disable
   )
 }
 
-function VacancyCard({ vacancy, applied, onApply }: { vacancy: Vacancy; applied: boolean; onApply: (vacancy: Vacancy) => void }) {
+function VacancyCard({ vacancy, applied, checking, onApply, onCheck }: { vacancy: Vacancy; applied: boolean; checking: boolean; onApply: (vacancy: Vacancy) => void; onCheck: (vacancy: Vacancy) => void }) {
   return (
     <article className="vacancy-card">
       <div className="score" aria-label={`Совпадение ${vacancy.score} процентов`}>{vacancy.score}</div>
@@ -144,14 +146,17 @@ function VacancyCard({ vacancy, applied, onApply }: { vacancy: Vacancy; applied:
         <p>{vacancy.reason}</p>
         <div className="vacancy-actions">
           <a href={vacancy.url} target="_blank" rel="noreferrer">Открыть вакансию <span aria-hidden="true">↗</span></a>
-          <button type="button" className={applied ? 'application-button applied' : 'application-button'} disabled={applied} onClick={() => onApply(vacancy)}>{applied ? 'Отклик добавлен ✓' : 'Я откликнулся'}</button>
+          <div className="vacancy-action-buttons">
+            <button type="button" className="compatibility-button" disabled={checking} onClick={() => onCheck(vacancy)}>{checking ? <><span className="spinner" /> Анализируем…</> : 'Проверить совместимость'}</button>
+            <button type="button" className={applied ? 'application-button applied' : 'application-button'} disabled={applied} onClick={() => onApply(vacancy)}>{applied ? 'Отклик добавлен ✓' : 'Я откликнулся'}</button>
+          </div>
         </div>
       </div>
     </article>
   )
 }
 
-function Results({ result, applications, onApply }: { result: SearchResponse; applications: JobApplication[]; onApply: (vacancy: Vacancy) => void }) {
+function Results({ result, applications, checkingUrl, onApply, onCheck }: { result: SearchResponse; applications: JobApplication[]; checkingUrl: string | null; onApply: (vacancy: Vacancy) => void; onCheck: (vacancy: Vacancy) => void }) {
   const [selectedCompany, setSelectedCompany] = useState('')
   const [companyFilterOpen, setCompanyFilterOpen] = useState(false)
   const companies = getVacancyCompanies(result.vacancies)
@@ -191,7 +196,7 @@ function Results({ result, applications, onApply }: { result: SearchResponse; ap
       </div>
       {result.warnings.length > 0 ? <div className="warnings" role="status">{result.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
       {visibleVacancies.length > 0 ? (
-        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} applied={applications.some((application) => application.vacancyUrl === vacancy.url)} onApply={onApply} />)}</div>
+        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} applied={applications.some((application) => application.vacancyUrl === vacancy.url)} checking={checkingUrl === vacancy.url} onApply={onApply} onCheck={onCheck} />)}</div>
       ) : (
         <div className="empty-state">
           <h3>{result.vacancies.length > 0 ? 'У этой компании вакансий не найдено' : 'Подходящих вакансий пока нет'}</h3>
@@ -200,6 +205,32 @@ function Results({ result, applications, onApply }: { result: SearchResponse; ap
       )}
     </section>
   )
+}
+
+const DECISION_LABELS: Record<CompatibilityResult['decision'], string> = {
+  apply: 'Откликаться', consider: 'Рассмотреть', research: 'Сначала изучить', skip: 'Пропустить',
+}
+
+function CompatibilityDialog({ vacancy, result, loading, error, onClose, onOpenResume }: { vacancy: Vacancy; result: CompatibilityResult | null; loading: boolean; error: string | null; onClose: () => void; onOpenResume: () => void }) {
+  return <div className="compatibility-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="compatibility-dialog" role="dialog" aria-modal="true" aria-labelledby="compatibility-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button type="button" className="dialog-close" aria-label="Закрыть" onClick={onClose}>×</button>
+      <p className="eyebrow">Career Ops · анализ вакансии</p>
+      <h2 id="compatibility-title">{vacancy.title}</h2>
+      <p className="dialog-company">{vacancy.company ?? 'Компания не указана'}</p>
+      {loading ? <div className="compatibility-loading"><span className="spinner" /><strong>Сравниваем вакансию с резюме…</strong><p>Первый анализ может занять несколько минут: Career Ops подготовит локальный профиль и изучит вакансию.</p></div> : null}
+      {error ? <div className="compatibility-error" role="alert"><p>{error}</p><button type="button" className="primary-button" onClick={onOpenResume}>Открыть резюме <span>→</span></button></div> : null}
+      {result ? <div className="compatibility-content">
+        <div className={`compatibility-score decision-${result.decision}`}><strong>{result.score.toFixed(1)}</strong><span>из 5</span><b>{DECISION_LABELS[result.decision]}</b></div>
+        <p className="compatibility-summary">{compatibilityPlainText(result.summary)}</p>
+        {result.strengths.length ? <section><h3>Сильные стороны</h3><ul>{result.strengths.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
+        {result.gaps.length ? <section><h3>Пробелы и как их закрыть</h3><div className="compatibility-gaps">{result.gaps.map((gap) => <article key={`${gap.requirement}-${gap.match}`}><div><strong>{compatibilityPlainText(gap.requirement)}</strong><span className={`gap-match ${gap.match}`}>{gap.match === 'missing' ? 'Нет в резюме' : gap.match === 'partial' ? 'Частично' : gap.match === 'strong' ? 'Сильное совпадение' : 'Не применимо'}</span></div><p>{compatibilityPlainText(gap.evidence)}</p><small>{compatibilityPlainText(gap.recommendation)}</small></article>)}</div></section> : null}
+        {result.improvements.length ? <section><h3>Что улучшить в резюме</h3><ol>{result.improvements.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ol></section> : null}
+        {result.risks.length ? <section><h3>Риски вакансии</h3><ul>{result.risks.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
+        {result.keywords.length ? <section><h3>Ключевые слова для ATS</h3><div className="compatibility-keywords">{result.keywords.map((item) => <span key={item}>{item}</span>)}</div></section> : null}
+      </div> : null}
+    </section>
+  </div>
 }
 
 type SettingsPageProps = {
@@ -454,6 +485,7 @@ type SearchPageProps = {
   applications: JobApplication[]
   onApply: (vacancy: Vacancy) => void
   onOpenSettings: () => void
+  onOpenResume: () => void
 }
 
 type SelectionItem = { id: string; label: string; meta?: string }
@@ -488,11 +520,16 @@ function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onTo
   )
 }
 
-function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, selectedIncludeKeywords, setSelectedIncludeKeywords, selectedExcludeKeywords, setSelectedExcludeKeywords, applications, onApply, onOpenSettings }: SearchPageProps) {
+function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, selectedIncludeKeywords, setSelectedIncludeKeywords, selectedExcludeKeywords, setSelectedExcludeKeywords, applications, onApply, onOpenSettings, onOpenResume }: SearchPageProps) {
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<'sites' | 'roles' | 'include' | 'exclude' | null>(null)
+  const [compatibilityVacancy, setCompatibilityVacancy] = useState<Vacancy | null>(null)
+  const [compatibilityResult, setCompatibilityResult] = useState<CompatibilityResult | null>(null)
+  const [compatibilityError, setCompatibilityError] = useState<string | null>(null)
+  const [checkingUrl, setCheckingUrl] = useState<string | null>(null)
+  const [compatibilityCache, setCompatibilityCache] = useState<Record<string, CompatibilityResult>>({})
 
   function toggleSelection(ids: string[], id: string): string[] {
     return ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]
@@ -520,6 +557,27 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     }
   }
 
+  async function handleCompatibility(vacancy: Vacancy) {
+    setCompatibilityVacancy(vacancy)
+    setCompatibilityError(null)
+    const cached = compatibilityCache[vacancy.url]
+    if (cached) {
+      setCompatibilityResult(cached)
+      return
+    }
+    setCompatibilityResult(null)
+    setCheckingUrl(vacancy.url)
+    try {
+      const checked = await checkCompatibility(vacancy, settings.roles.map((role) => role.title))
+      setCompatibilityResult(checked)
+      setCompatibilityCache((current) => ({ ...current, [vacancy.url]: checked }))
+    } catch (requestError) {
+      setCompatibilityError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить анализ.')
+    } finally {
+      setCheckingUrl(null)
+    }
+  }
+
   const hasSettings = settings.sites.length > 0 && settings.roles.length > 0
   return (
     <div className="page-content" onClick={() => setOpenDropdown(null)}>
@@ -542,7 +600,8 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
           </form>
         </section>
       )}
-      {result ? <Results result={result} applications={applications} onApply={onApply} /> : null}
+      {result ? <Results result={result} applications={applications} checkingUrl={checkingUrl} onApply={onApply} onCheck={handleCompatibility} /> : null}
+      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} result={compatibilityResult} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} /> : null}
     </div>
   )
 }
@@ -700,7 +759,7 @@ function ResumePage() {
               <div><dt>Извлечено</dt><dd>{resume.extracted_characters?.toLocaleString('ru-RU')} знаков</dd></div>
             </dl>
           </div>
-          <div className="resume-preview"><div><strong>Предварительный просмотр</strong><span>Текст пока не передаётся Career Ops</span></div><pre>{resume.preview}</pre></div>
+          <div className="resume-preview"><div><strong>Предварительный просмотр</strong><span>Career Ops использует этот текст только после запуска проверки</span></div><pre>{resume.preview}</pre></div>
         </div> : null}
       </section>
     </div>
@@ -812,7 +871,7 @@ export default function App() {
             ? <ResumePage />
           : page === 'applications'
             ? <ApplicationsPage applications={applications} onUpdate={changeApplication} onRemove={removeApplication} onOpenSearch={() => setPage('search')} />
-            : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} />}
+            : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} onOpenResume={() => setPage('resume')} />}
         <footer><span>Job Compass</span><p>Собирает ссылки. Решение об отклике всегда остаётся за вами.</p></footer>
       </main>
     </div>

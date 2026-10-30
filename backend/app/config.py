@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     node_bin: str = "node"
     codex_timeout_seconds: int = Field(default=240, ge=30, le=900)
     career_ops_doctor_timeout_seconds: int = Field(default=15, ge=1, le=60)
+    career_ops_analysis_timeout_seconds: int = Field(default=900, ge=60, le=1800)
     max_sites: int = Field(default=20, ge=1, le=50)
     max_results: int = Field(default=100, ge=1, le=500)
     supabase_url: str | None = None

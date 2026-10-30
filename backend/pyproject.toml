@@ -32,6 +32,7 @@ packages = ["app"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "app/ai_job_search_result.schema.json" = "app/ai_job_search_result.schema.json"
+"app/career_ops_compatibility.schema.json" = "app/career_ops_compatibility.schema.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

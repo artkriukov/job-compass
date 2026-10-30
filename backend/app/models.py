@@ -72,6 +72,35 @@ class ResumeSnapshot(BaseModel):
         return cls(uploaded=False)
 
 
+CompatibilityDecision = Literal["apply", "consider", "research", "skip"]
+CompatibilityMatch = Literal["strong", "partial", "missing", "not_applicable"]
+
+
+class CompatibilityRequest(BaseModel):
+    vacancy: Vacancy
+    target_roles: Annotated[list[str], Field(max_length=20)] = Field(default_factory=list)
+
+
+class CompatibilityGap(BaseModel):
+    requirement: str
+    importance: Literal["critical", "high", "meaningful", "preferred", "low_signal"]
+    match: CompatibilityMatch
+    evidence: str
+    recommendation: str
+
+
+class CompatibilityResult(BaseModel):
+    score: float = Field(ge=1, le=5)
+    decision: CompatibilityDecision
+    summary: str
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[CompatibilityGap] = Field(default_factory=list)
+    improvements: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    report_path: str | None = None
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]

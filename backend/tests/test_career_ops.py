@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.models import CompatibilityRequest, Vacancy
 from app.services.career_ops import CareerOpsProvider
 
 
@@ -23,6 +24,7 @@ def make_provider(tmp_path: Path) -> CareerOpsProvider:
         codex_bin="codex",
         node_bin="node",
         doctor_timeout_seconds=5,
+        analysis_timeout_seconds=60,
     )
 
 
@@ -66,6 +68,7 @@ def test_health_handles_unconfigured_provider() -> None:
         codex_bin="missing-codex",
         node_bin="missing-node",
         doctor_timeout_seconds=5,
+        analysis_timeout_seconds=60,
     )
 
     health = provider.health()
@@ -89,3 +92,67 @@ def test_health_handles_invalid_doctor_output(
 
     assert health.onboarding_needed is None
     assert health.warnings == ["Career Ops doctor вернул некорректный JSON"]
+
+
+def make_request() -> CompatibilityRequest:
+    return CompatibilityRequest(
+        vacancy=Vacancy(
+            title="Backend developer",
+            company="Example",
+            location="Remote",
+            url="https://example.com/jobs/1",
+            score=90,
+            reason="совпадает роль",
+            source_site="https://example.com/jobs",
+        ),
+        target_roles=["Backend developer"],
+    )
+
+
+def test_evaluate_runs_codex_and_parses_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    documents = tmp_path / "user-data/documents"
+    documents.mkdir(parents=True)
+    (documents / "resume-one.txt").write_text("Real resume text")
+    metadata = tmp_path / "user-data/data/resume-upload.json"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text("{}")
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        assert command[:2] == ["codex", "exec"]
+        assert str(tmp_path / "user-data") in command
+        assert "UNTRUSTED VACANCY DATA" in kwargs["input"]
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text(json.dumps({
+            "score": 4.2,
+            "decision": "apply",
+            "summary": "Сильное совпадение",
+            "strengths": ["Python"],
+            "gaps": [],
+            "improvements": ["Уточнить масштаб"],
+            "risks": [],
+            "keywords": ["FastAPI"],
+            "report_path": "reports/001-example.md",
+        }))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.services.career_ops.subprocess.run", fake_run)
+
+    result = provider.evaluate(make_request())
+
+    assert result.score == 4.2
+    assert result.decision == "apply"
+    assert result.report_path == "reports/001-example.md"
+
+
+def test_evaluate_requires_uploaded_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+
+    with pytest.raises(RuntimeError, match="Сначала загрузите резюме"):
+        provider.evaluate(make_request())

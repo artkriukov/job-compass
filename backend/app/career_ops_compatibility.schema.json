@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["score", "decision", "summary", "strengths", "gaps", "improvements", "risks", "keywords", "report_path"],
+  "properties": {
+    "score": { "type": "number", "minimum": 1, "maximum": 5 },
+    "decision": { "type": "string", "enum": ["apply", "consider", "research", "skip"] },
+    "summary": { "type": "string" },
+    "strengths": { "type": "array", "items": { "type": "string" } },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requirement", "importance", "match", "evidence", "recommendation"],
+        "properties": {
+          "requirement": { "type": "string" },
+          "importance": { "type": "string", "enum": ["critical", "high", "meaningful", "preferred", "low_signal"] },
+          "match": { "type": "string", "enum": ["strong", "partial", "missing", "not_applicable"] },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    },
+    "improvements": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+    "report_path": { "type": ["string", "null"] }
+  }
+}

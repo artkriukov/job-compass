@@ -26,3 +26,23 @@ export type ResumeSnapshot = {
   uploaded_at: string | null
 }
 
+export type CompatibilityGap = {
+  requirement: string
+  importance: 'critical' | 'high' | 'meaningful' | 'preferred' | 'low_signal'
+  match: 'strong' | 'partial' | 'missing' | 'not_applicable'
+  evidence: string
+  recommendation: string
+}
+
+export type CompatibilityResult = {
+  score: number
+  decision: 'apply' | 'consider' | 'research' | 'skip'
+  summary: string
+  strengths: string[]
+  gaps: CompatibilityGap[]
+  improvements: string[]
+  risks: string[]
+  keywords: string[]
+  report_path: string | null
+}
+
