@@ -122,9 +122,21 @@ def test_evaluate_runs_codex_and_parses_result(
     monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
 
     def fake_run(command, **kwargs):  # noqa: ANN001
+        if command[1] == "browser-extract.mjs":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "url": "https://example.com/jobs/1",
+                    "title": "Backend developer",
+                    "text": "Backend developer. Full vacancy description. Apply now. " * 3,
+                }),
+                "",
+            )
         assert command[:2] == ["codex", "exec"]
         assert str(tmp_path / "user-data") in command
         assert "UNTRUSTED VACANCY DATA" in kwargs["input"]
+        assert "Full vacancy description" in kwargs["input"]
         output_path = Path(command[command.index("--output-last-message") + 1])
         output_path.write_text(json.dumps({
             "score": 4.2,
@@ -156,3 +168,15 @@ def test_evaluate_requires_uploaded_resume(
 
     with pytest.raises(RuntimeError, match="Сначала загрузите резюме"):
         provider.evaluate(make_request())
+
+
+def test_extract_vacancy_page_returns_none_on_browser_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    monkeypatch.setattr(
+        "app.services.career_ops.subprocess.run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 1, "", "browser failed"),
+    )
+
+    assert provider._extract_vacancy_page("https://example.com/jobs/1") is None
