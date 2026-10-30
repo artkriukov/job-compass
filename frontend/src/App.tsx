@@ -5,8 +5,10 @@ import {
   deleteRemoteApplication,
   getRemoteApplications,
   getRemoteSearchSettings,
+  getResume,
   saveRemoteSearchSettings,
   searchVacancies,
+  uploadResume,
   updateRemoteApplication,
 } from './api'
 import {
@@ -35,10 +37,10 @@ import {
   type SavedRole,
   type SearchSettings,
 } from './search-settings'
-import type { SearchResponse, Vacancy } from './types'
+import type { ResumeSnapshot, SearchResponse, Vacancy } from './types'
 import './styles.css'
 
-type Page = 'search' | 'applications' | 'settings'
+type Page = 'search' | 'applications' | 'resume' | 'settings'
 type SettingsSection = 'sites' | 'roles' | 'keywords'
 
 const SETTINGS_SECTIONS: SettingsSection[] = ['sites', 'roles', 'keywords']
@@ -620,6 +622,91 @@ function ApplicationsPage({ applications, onUpdate, onRemove, onOpenSearch }: Ap
   )
 }
 
+function formatFileSize(value: number): string {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} КБ`
+  return `${(value / (1024 * 1024)).toFixed(1)} МБ`
+}
+
+function ResumePage() {
+  const [resume, setResume] = useState<ResumeSnapshot | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void getResume()
+      .then((snapshot) => {
+        if (active) setResume(snapshot)
+      })
+      .catch((requestError) => {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : 'Не удалось загрузить сведения о резюме.')
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [])
+
+  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!file) return
+    const form = event.currentTarget
+    setError(null)
+    setUploading(true)
+    try {
+      setResume(await uploadResume(file))
+      setFile(null)
+      form.reset()
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Не удалось загрузить резюме.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="page-content">
+      <section className="page-heading resume-heading">
+        <p className="eyebrow">Профиль кандидата</p>
+        <h1>Ваше резюме.</h1>
+        <p className="lede">Загрузите исходный файл. Он останется на этом компьютере, а перед анализом вакансий вы сможете проверить извлечённый текст.</p>
+      </section>
+
+      <section className="resume-workspace">
+        <form className="resume-upload" onSubmit={handleUpload}>
+          <div className="resume-upload-copy">
+            <span aria-hidden="true">↑</span>
+            <div><h2>{resume?.uploaded ? 'Заменить исходное резюме' : 'Загрузить резюме'}</h2><p>PDF, DOCX, TXT или MD · до 10 МБ</p></div>
+          </div>
+          <label className="resume-file-field">
+            <span>{file ? file.name : 'Выбрать файл'}</span>
+            <input type="file" accept=".pdf,.docx,.txt,.md" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <button type="submit" className="primary-button" disabled={!file || uploading}>{uploading ? <><span className="spinner" /> Извлекаем текст…</> : <>Загрузить <span>→</span></>}</button>
+        </form>
+
+        {error ? <p className="error resume-error" role="alert">{error}</p> : null}
+        {loading ? <p className="resume-loading">Проверяем сохранённое резюме…</p> : null}
+
+        {!loading && resume?.uploaded ? <div className="resume-result">
+          <div className="resume-result-heading">
+            <div><p className="eyebrow">Файл загружен</p><h2>{resume.original_filename}</h2></div>
+            <dl>
+              <div><dt>Размер</dt><dd>{formatFileSize(resume.size_bytes ?? 0)}</dd></div>
+              <div><dt>Извлечено</dt><dd>{resume.extracted_characters?.toLocaleString('ru-RU')} знаков</dd></div>
+            </dl>
+          </div>
+          <div className="resume-preview"><div><strong>Предварительный просмотр</strong><span>Текст пока не передаётся Career Ops</span></div><pre>{resume.preview}</pre></div>
+        </div> : null}
+      </section>
+    </div>
+  )
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>('search')
   const [settings, setSettings] = useState<SearchSettings>(loadSearchSettings)
@@ -712,6 +799,7 @@ export default function App() {
         <nav aria-label="Основная навигация">
           <button type="button" className={page === 'search' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('search')}><span aria-hidden="true">⌕</span><span>Поиск вакансий</span></button>
           <button type="button" className={page === 'applications' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('applications')}><span aria-hidden="true">✓</span><span>Отклики</span>{applications.length > 0 ? <b className="nav-count">{applications.length}</b> : null}</button>
+          <button type="button" className={page === 'resume' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('resume')}><span aria-hidden="true">▤</span><span>Резюме</span></button>
           <button type="button" className={page === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('settings')}><span aria-hidden="true">◫</span><span>Источники и должности</span></button>
         </nav>
         <div className="sidebar-status"><i /><div><strong>Работает локально</strong><span>Данные остаются у вас</span></div></div>
@@ -720,6 +808,8 @@ export default function App() {
         <header className="mobile-topbar"><button type="button" className="brand" onClick={() => setPage('search')}><span className="brand-mark">JC</span><span>Job Compass</span></button></header>
         {page === 'settings'
           ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} />
+          : page === 'resume'
+            ? <ResumePage />
           : page === 'applications'
             ? <ApplicationsPage applications={applications} onUpdate={changeApplication} onRemove={removeApplication} onOpenSearch={() => setPage('search')} />
             : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} />}

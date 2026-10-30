@@ -272,6 +272,32 @@ legend { margin-bottom: 11px; }
 .applications-empty .primary-button { max-width: 230px; }
 .storage-note { margin: 18px 0 0; color: #8b948e; font-size: 11px; text-align: right; }
 
+.resume-heading { margin-bottom: 38px; }
+.resume-workspace { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); box-shadow: 0 20px 55px #27352d0b; }
+.resume-upload { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(220px, .7fr) 180px; gap: 18px; align-items: center; padding: 26px 28px; }
+.resume-upload-copy { display: flex; align-items: center; gap: 15px; }
+.resume-upload-copy > span { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px; color: #334700; background: #e4f7b7; font-size: 22px; }
+.resume-upload-copy h2 { margin: 0 0 4px; font-size: 18px; }
+.resume-upload-copy p { margin: 0; color: var(--muted); font-size: 12px; }
+.resume-file-field { position: relative; display: flex; align-items: center; height: 49px; padding: 0 14px; overflow: hidden; border: 1px dashed #b9c0b5; border-radius: 10px; color: #65706a; background: #f6f8f2; cursor: pointer; font-size: 12px; font-weight: 700; }
+.resume-file-field:hover { border-color: var(--lime-dark); background: #f1f8df; }
+.resume-file-field span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resume-file-field input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.resume-error { margin: 0 28px 24px; }
+.resume-loading { margin: 0; padding: 26px 28px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.resume-result { border-top: 1px solid var(--line); }
+.resume-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px 28px; }
+.resume-result-heading .eyebrow { margin-bottom: 5px; }
+.resume-result-heading h2 { margin: 0; font-size: 20px; }
+.resume-result-heading dl { display: flex; gap: 26px; margin: 0; }
+.resume-result-heading dl div { display: grid; gap: 3px; }
+.resume-result-heading dt { color: #858e88; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.resume-result-heading dd { margin: 0; font-size: 13px; font-weight: 700; }
+.resume-preview { margin: 0 28px 28px; overflow: hidden; border: 1px solid #dde1d9; border-radius: 13px; background: #fff; }
+.resume-preview > div { display: flex; justify-content: space-between; gap: 18px; padding: 13px 16px; border-bottom: 1px solid #e3e6df; background: #f6f8f3; font-size: 11px; }
+.resume-preview > div span { color: #858e88; }
+.resume-preview pre { max-height: 420px; margin: 0; padding: 20px; overflow: auto; color: #37403b; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+
 footer { display: flex; justify-content: space-between; gap: 25px; margin-top: auto; padding: 26px 36px; color: #929b96; border-top: 1px solid #d9dcd5; font-size: 12px; }
 footer span { color: #404843; font: 700 13px Manrope, sans-serif; }
 footer p { margin: 0; }
@@ -292,7 +318,7 @@ footer p { margin: 0; }
   .app-layout { display: block; }
   .sidebar { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; top: auto; display: block; width: 100%; height: auto; padding: 8px 12px max(8px, env(safe-area-inset-bottom)); }
   .sidebar > .brand, .sidebar-status { display: none; }
-  .sidebar nav { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .sidebar nav { grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .nav-item { justify-content: center; min-height: 48px; padding: 0 8px; font-size: 12px; }
   .nav-item > span:first-child { font-size: 20px; }
   .nav-count { display: none; }
@@ -301,6 +327,7 @@ footer p { margin: 0; }
   .page-content { width: min(100% - 28px, 1220px); padding: 48px 0 110px; }
   .search-form { padding: 26px 22px; }
   .ready-banner { align-items: flex-start; flex-direction: column; }
+  .resume-upload { grid-template-columns: 1fr; }
   .banner-button { width: 100%; flex-basis: auto; }
   footer { display: none; }
 }
@@ -338,6 +365,8 @@ footer p { margin: 0; }
   .application-field { grid-column: 1 / -1; }
   .hr-field { grid-row: 3; }
   .stage-field { grid-row: 2; }
+  .resume-result-heading { align-items: flex-start; flex-direction: column; }
+  .resume-result-heading dl { width: 100%; justify-content: space-between; }
   .storage-note { text-align: left; }
 }
 

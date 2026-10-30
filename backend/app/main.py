@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
@@ -10,6 +10,7 @@ from app.models import (
     ApplicationUpdate,
     HealthResponse,
     JobApplication,
+    ResumeSnapshot,
     SearchRequest,
     SearchResponse,
     SearchSettingsSnapshot,
@@ -17,6 +18,12 @@ from app.models import (
 from app.services.ai_job_search import AiJobSearchError
 from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
 from app.services.career_ops import CareerOpsProvider
+from app.services.resume_store import (
+    MAX_RESUME_BYTES,
+    ResumeStorageError,
+    ResumeStore,
+    ResumeValidationError,
+)
 from app.services.search import SearchService
 from app.services.settings_store import SettingsStorageError, SupabaseSettingsStore
 
@@ -67,6 +74,13 @@ def get_career_ops_provider(settings: SettingsDependency) -> CareerOpsProvider:
 CareerOpsDependency = Annotated[CareerOpsProvider, Depends(get_career_ops_provider)]
 
 
+def get_resume_store(settings: SettingsDependency) -> ResumeStore:
+    return ResumeStore(settings.career_ops_data_dir)
+
+
+ResumeStoreDependency = Annotated[ResumeStore, Depends(get_resume_store)]
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health(
     settings: SettingsDependency, career_ops: CareerOpsDependency
@@ -78,6 +92,31 @@ async def health(
         settings_storage_ready=bool(settings.supabase_url),
         career_ops=career_ops.health(),
     )
+
+
+@app.get("/api/career-ops/resume", response_model=ResumeSnapshot)
+async def read_resume(store: ResumeStoreDependency) -> ResumeSnapshot:
+    try:
+        return store.load()
+    except ResumeStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/career-ops/resume", response_model=ResumeSnapshot)
+async def upload_resume(
+    store: ResumeStoreDependency, file: Annotated[UploadFile, File()]
+) -> ResumeSnapshot:
+    try:
+        payload = await file.read(MAX_RESUME_BYTES + 1)
+        return store.save(
+            filename=file.filename or "resume",
+            content_type=file.content_type,
+            payload=payload,
+        )
+    except ResumeValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ResumeStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/search", response_model=SearchResponse)

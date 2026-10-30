@@ -16,3 +16,13 @@ export type SearchResponse = {
   warnings: string[]
 }
 
+export type ResumeSnapshot = {
+  uploaded: boolean
+  original_filename: string | null
+  content_type: string | null
+  size_bytes: number | null
+  extracted_characters: number | null
+  preview: string | null
+  uploaded_at: string | null
+}
+

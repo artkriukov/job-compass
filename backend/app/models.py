@@ -58,6 +58,20 @@ class CareerOpsHealth(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ResumeSnapshot(BaseModel):
+    uploaded: bool
+    original_filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    extracted_characters: int | None = None
+    preview: str | None = None
+    uploaded_at: datetime | None = None
+
+    @classmethod
+    def empty(cls) -> "ResumeSnapshot":
+        return cls(uploaded=False)
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]

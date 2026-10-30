@@ -1,4 +1,4 @@
-import type { SearchResponse } from './types'
+import type { ResumeSnapshot, SearchResponse } from './types'
 import type { SearchSettings } from './search-settings'
 import type { JobApplication } from './applications'
 import type { Vacancy } from './types'
@@ -130,5 +130,25 @@ export async function updateRemoteApplication(
 export async function deleteRemoteApplication(id: string): Promise<void> {
   const response = await fetch(`/api/applications/${id}`, { method: 'DELETE' })
   if (!response.ok) throw new Error(`Не удалось удалить отклик: ${response.status}`)
+}
+
+export async function getResume(): Promise<ResumeSnapshot> {
+  const response = await fetch('/api/career-ops/resume')
+  if (!response.ok) throw new Error(`Не удалось получить сведения о резюме: ${response.status}`)
+  return response.json() as Promise<ResumeSnapshot>
+}
+
+export async function uploadResume(file: File): Promise<ResumeSnapshot> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await fetch('/api/career-ops/resume', {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Не удалось загрузить резюме: ${response.status}`)
+  }
+  return response.json() as Promise<ResumeSnapshot>
 }
 
