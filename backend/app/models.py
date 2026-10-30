@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -38,6 +39,8 @@ class Vacancy(BaseModel):
     score: int = Field(ge=0, le=100)
     reason: str
     source_site: HttpUrl
+    seen_before: bool = False
+    applied: bool = False
 
 
 class SearchResponse(BaseModel):
@@ -74,4 +77,31 @@ class SearchSettingsSnapshot(BaseModel):
     @classmethod
     def clean_saved_keywords(cls, values: list[str]) -> list[str]:
         return sorted({" ".join(value.split()).lower() for value in values if value.strip()})
+
+
+ApplicationStage = Literal["review", "hr_interview", "technical_interview", "offer"]
+
+
+class ApplicationCreate(BaseModel):
+    title: Annotated[str, Field(min_length=1, max_length=300)]
+    company: Annotated[str, Field(min_length=1, max_length=200)]
+    location: str | None = None
+    vacancy_url: HttpUrl
+    source_site: HttpUrl
+
+
+class ApplicationUpdate(BaseModel):
+    stage: ApplicationStage | None = None
+    hr_url: Annotated[str, Field(max_length=500)] | None = None
+
+
+class JobApplication(BaseModel):
+    id: UUID
+    company: str
+    vacancy_title: str
+    vacancy_url: HttpUrl
+    hr_url: str
+    stage: ApplicationStage
+    created_at: datetime
+    updated_at: datetime
 

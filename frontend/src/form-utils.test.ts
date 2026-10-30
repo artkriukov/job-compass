@@ -23,6 +23,7 @@ describe('mergeSearchResponses', () => {
       title: 'Python developer', company: 'Acme', location: null,
       url: 'https://example.test/jobs/1', score: 60, reason: 'Python',
       source_site: 'https://example.test/jobs',
+      seen_before: false, applied: false,
     }
     const result = mergeSearchResponses([
       { provider: 'site_crawler', vacancies: [vacancy], warnings: ['warning'] },
@@ -40,16 +41,19 @@ describe('company vacancy filters', () => {
       title: 'Support engineer', company: 'Яндекс', location: null,
       url: 'https://example.test/jobs/1', score: 90, reason: 'Support',
       source_site: 'https://example.test/jobs',
+      seen_before: false, applied: false,
     },
     {
       title: 'Service desk engineer', company: 'МТС', location: null,
       url: 'https://example.test/jobs/2', score: 80, reason: 'Service Desk',
       source_site: 'https://example.test/jobs',
+      seen_before: false, applied: false,
     },
     {
       title: 'Technical specialist', company: null, location: null,
       url: 'https://example.test/jobs/3', score: 70, reason: 'Technical support',
       source_site: 'https://example.test/jobs',
+      seen_before: false, applied: false,
     },
   ]
 

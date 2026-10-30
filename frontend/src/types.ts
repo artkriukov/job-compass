@@ -6,6 +6,8 @@ export type Vacancy = {
   score: number
   reason: string
   source_site: string
+  seen_before: boolean
+  applied: boolean
 }
 
 export type SearchResponse = {
