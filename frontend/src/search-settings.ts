@@ -44,6 +44,24 @@ export const EMPTY_SEARCH_SELECTION: SearchSelection = {
   excludeKeywords: [],
 }
 
+export function getCareerSiteHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+export function filterCareerSites(sites: CareerSite[], query: string): CareerSite[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU')
+  if (!normalizedQuery) return sites
+
+  return sites.filter((site) =>
+    site.name.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    getCareerSiteHostname(site.url).toLocaleLowerCase('ru-RU').includes(normalizedQuery),
+  )
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }

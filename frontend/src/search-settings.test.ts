@@ -2,9 +2,28 @@ import { describe, expect, it } from 'vitest'
 import {
   EMPTY_SEARCH_SELECTION,
   EMPTY_SEARCH_SETTINGS,
+  filterCareerSites,
+  getCareerSiteHostname,
   parseSearchSelection,
   parseSearchSettings,
 } from './search-settings'
+
+const sites = [
+  { id: 'site-1', name: 'Яндекс', url: 'https://yandex.ru/jobs' },
+  { id: 'site-2', name: 'Cloud.ru', url: 'https://career.cloud.ru/vacancies' },
+]
+
+describe('career site search', () => {
+  it('matches sites by company name or hostname', () => {
+    expect(filterCareerSites(sites, 'янд')).toEqual([sites[0]])
+    expect(filterCareerSites(sites, 'career.cloud')).toEqual([sites[1]])
+    expect(filterCareerSites(sites, '  ')).toBe(sites)
+  })
+
+  it('formats hostnames for display', () => {
+    expect(getCareerSiteHostname('https://www.example.com/jobs')).toBe('example.com')
+  })
+})
 
 describe('parseSearchSettings', () => {
   it('loads valid versioned settings', () => {
