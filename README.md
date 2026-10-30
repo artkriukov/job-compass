@@ -10,6 +10,11 @@
 
 AI Job Search не является HTTP API. В этом проекте backend безопасно запускает его `scrape`-workflow через локальный `codex exec`, получает структурированный JSON и показывает его во frontend. Для личного использования отдельный OpenAI API-ключ не нужен, если Codex CLI уже авторизован вашей подпиской.
 
+Career Ops подключается отдельно как локальный движок анализа резюме и вакансий. Backend
+проверяет полный checkout Career Ops, наличие Codex CLI и состояние onboarding через его
+`doctor.mjs`. Пользовательские резюме и созданные документы хранятся в отдельной директории,
+а не в репозитории Job Compass.
+
 ## Быстрый запуск в Docker
 
 ```bash
@@ -60,6 +65,26 @@ AI_JOB_SEARCH_ROOT=/absolute/path/to/ai-job-search
 ```
 
 Если переменная пуста, используется встроенный crawler. Docker по умолчанию также работает в этом режиме: конфигурация и авторизация локального Codex намеренно не копируются внутрь контейнера. Для AI Job Search запустите backend локально по инструкции ниже.
+
+## Локальный Career Ops
+
+Установите полный Career Ops рядом с Job Compass:
+
+```bash
+cd /path/to/parent
+npx @santifer/career-ops init
+```
+
+Затем укажите checkout и отдельную директорию пользовательских данных:
+
+```env
+CAREER_OPS_PROJECT_ROOT=/absolute/path/to/career-ops
+CAREER_OPS_DATA_DIR=/absolute/path/to/job-compass-data/career-ops
+```
+
+`GET /api/health` показывает, установлен ли движок, доступен ли Codex и какие файлы onboarding
+ещё отсутствуют. Пока onboarding не завершён, поиск вакансий продолжает работать как раньше,
+а Career Ops не запускает анализ или генерацию документов.
 
 ## Локальная разработка
 

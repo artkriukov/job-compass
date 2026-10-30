@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.services.ai_job_search import AiJobSearchError
 from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
+from app.services.career_ops import CareerOpsProvider
 from app.services.search import SearchService
 from app.services.settings_store import SettingsStorageError, SupabaseSettingsStore
 
@@ -53,13 +54,29 @@ def get_application_store(settings: SettingsDependency) -> SupabaseApplicationSt
 ApplicationStoreDependency = Annotated[SupabaseApplicationStore, Depends(get_application_store)]
 
 
+def get_career_ops_provider(settings: SettingsDependency) -> CareerOpsProvider:
+    return CareerOpsProvider(
+        project_root=settings.career_ops_project_root,
+        data_dir=settings.career_ops_data_dir,
+        codex_bin=settings.codex_bin,
+        node_bin=settings.node_bin,
+        doctor_timeout_seconds=settings.career_ops_doctor_timeout_seconds,
+    )
+
+
+CareerOpsDependency = Annotated[CareerOpsProvider, Depends(get_career_ops_provider)]
+
+
 @app.get("/api/health", response_model=HealthResponse)
-async def health(settings: SettingsDependency) -> HealthResponse:
+async def health(
+    settings: SettingsDependency, career_ops: CareerOpsDependency
+) -> HealthResponse:
     service = SearchService(settings)
     return HealthResponse(
         configured_provider=settings.search_provider,
         ai_job_search_ready=service.ai_job_search_ready,
         settings_storage_ready=bool(settings.supabase_url),
+        career_ops=career_ops.health(),
     )
 
 

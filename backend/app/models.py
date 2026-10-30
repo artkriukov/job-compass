@@ -49,11 +49,21 @@ class SearchResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CareerOpsHealth(BaseModel):
+    configured: bool
+    installed: bool
+    codex_available: bool
+    onboarding_needed: bool | None = None
+    missing: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]
     ai_job_search_ready: bool
     settings_storage_ready: bool
+    career_ops: CareerOpsHealth
 
 
 class SavedCareerSite(BaseModel):

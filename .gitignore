@@ -152,6 +152,7 @@ activemq-data/
 # Environments
 .env
 .envrc
+.career-ops-data/
 .venv
 env/
 venv/
