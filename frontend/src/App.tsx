@@ -1,6 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { FormEvent } from 'react'
-import { getRemoteSearchSettings, saveRemoteSearchSettings, searchVacancies } from './api'
+import {
+  createRemoteApplication,
+  deleteRemoteApplication,
+  getRemoteApplications,
+  getRemoteSearchSettings,
+  saveRemoteSearchSettings,
+  searchVacancies,
+  updateRemoteApplication,
+} from './api'
+import {
+  addVacancyApplication,
+  APPLICATION_STAGES,
+  loadApplications,
+  saveApplications,
+  updateApplication,
+  type ApplicationStage,
+  type JobApplication,
+} from './applications'
 import {
   filterVacanciesByCompany,
   getVacancyCompanies,
@@ -19,7 +36,7 @@ import {
 import type { SearchResponse, Vacancy } from './types'
 import './styles.css'
 
-type Page = 'search' | 'settings'
+type Page = 'search' | 'applications' | 'settings'
 
 function createId(): string {
   return crypto.randomUUID()
@@ -42,7 +59,68 @@ function TrashIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
 }
 
-function VacancyCard({ vacancy }: { vacancy: Vacancy }) {
+type SingleSelectOption = {
+  value: string
+  label: string
+  meta?: string | number
+}
+
+function SingleSelect({ ariaLabel, className = '', value, options, open, disabled = false, onOpenChange, onChange }: {
+  ariaLabel: string
+  className?: string
+  value: string
+  options: SingleSelectOption[]
+  open: boolean
+  disabled?: boolean
+  onOpenChange: (open: boolean) => void
+  onChange: (value: string) => void
+}) {
+  const menuId = useId()
+  const selectedOption = options.find((option) => option.value === value)
+
+  return (
+    <div className={`${open ? 'single-select open' : 'single-select'} ${className}`.trim()} onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        className="single-select-trigger"
+        disabled={disabled}
+        onClick={() => onOpenChange(!open)}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+      >
+        <span>{selectedOption?.label ?? 'Ничего не выбрано'}</span>
+        <i aria-hidden="true">⌄</i>
+      </button>
+      {open ? (
+        <div className="single-select-menu" id={menuId} role="listbox" aria-label={ariaLabel}>
+          {options.map((option) => {
+            const selected = option.value === value
+            return (
+              <button
+                type="button"
+                className={selected ? 'single-select-option selected' : 'single-select-option'}
+                key={option.value}
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onChange(option.value)
+                  onOpenChange(false)
+                }}
+              >
+                <span>{option.label}</span>
+                <i aria-hidden="true">{option.meta ?? (selected ? '✓' : '')}</i>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function VacancyCard({ vacancy, applied, onApply }: { vacancy: Vacancy; applied: boolean; onApply: (vacancy: Vacancy) => void }) {
   return (
     <article className="vacancy-card">
       <div className="score" aria-label={`Совпадение ${vacancy.score} процентов`}>{vacancy.score}</div>
@@ -51,19 +129,34 @@ function VacancyCard({ vacancy }: { vacancy: Vacancy }) {
           <span>{vacancy.company ?? 'Компания не указана'}</span>
           {vacancy.location ? <span>{vacancy.location}</span> : null}
         </div>
+        <div className="vacancy-badges">
+          {vacancy.seen_before ? <span className="vacancy-badge seen">Уже просмотрена</span> : <span className="vacancy-badge new">Новая</span>}
+          {vacancy.applied || applied ? <span className="vacancy-badge applied">Вы откликнулись</span> : null}
+        </div>
         <h3>{vacancy.title}</h3>
         <p>{vacancy.reason}</p>
-        <a href={vacancy.url} target="_blank" rel="noreferrer">Открыть вакансию <span aria-hidden="true">↗</span></a>
+        <div className="vacancy-actions">
+          <a href={vacancy.url} target="_blank" rel="noreferrer">Открыть вакансию <span aria-hidden="true">↗</span></a>
+          <button type="button" className={applied ? 'application-button applied' : 'application-button'} disabled={applied} onClick={() => onApply(vacancy)}>{applied ? 'Отклик добавлен ✓' : 'Я откликнулся'}</button>
+        </div>
       </div>
     </article>
   )
 }
 
-function Results({ result }: { result: SearchResponse }) {
+function Results({ result, applications, onApply }: { result: SearchResponse; applications: JobApplication[]; onApply: (vacancy: Vacancy) => void }) {
   const [selectedCompany, setSelectedCompany] = useState('')
   const [companyFilterOpen, setCompanyFilterOpen] = useState(false)
   const companies = getVacancyCompanies(result.vacancies)
   const visibleVacancies = filterVacanciesByCompany(result.vacancies, selectedCompany)
+  const companyOptions: SingleSelectOption[] = [
+    { value: '', label: 'Все компании', meta: result.vacancies.length },
+    ...companies.map((company) => ({
+      value: company,
+      label: company,
+      meta: filterVacanciesByCompany(result.vacancies, company).length,
+    })),
+  ]
 
   return (
     <section className="results" aria-live="polite" onClick={() => setCompanyFilterOpen(false)}>
@@ -75,32 +168,23 @@ function Results({ result }: { result: SearchResponse }) {
         <div className="results-controls">
           <div className="company-filter" onClick={(event) => event.stopPropagation()}>
             <span>Компания</span>
-            <div className={companyFilterOpen ? 'company-select open' : 'company-select'}>
-              <button
-                type="button"
-                className="company-select-trigger"
-                disabled={companies.length === 0}
-                onClick={() => setCompanyFilterOpen((open) => !open)}
-                aria-expanded={companyFilterOpen}
-              >
-                <span>{companies.length === 0 ? 'Нет найденных компаний' : selectedCompany || 'Все компании'}</span>
-                <i aria-hidden="true">⌄</i>
-              </button>
-              {companyFilterOpen ? <div className="company-select-menu">
-                <button type="button" className={!selectedCompany ? 'company-option selected' : 'company-option'} onClick={() => { setSelectedCompany(''); setCompanyFilterOpen(false) }}><span>Все компании</span><i>{result.vacancies.length}</i></button>
-                {companies.map((company) => {
-                  const count = filterVacanciesByCompany(result.vacancies, company).length
-                  return <button type="button" key={company} className={selectedCompany === company ? 'company-option selected' : 'company-option'} onClick={() => { setSelectedCompany(company); setCompanyFilterOpen(false) }}><span>{company}</span><i>{count}</i></button>
-                })}
-              </div> : null}
-            </div>
+            <SingleSelect
+              ariaLabel="Фильтр по компании"
+              className="company-select"
+              value={selectedCompany}
+              options={companies.length > 0 ? companyOptions : [{ value: '', label: 'Нет найденных компаний' }]}
+              open={companyFilterOpen}
+              disabled={companies.length === 0}
+              onOpenChange={setCompanyFilterOpen}
+              onChange={setSelectedCompany}
+            />
           </div>
           <span className="provider">{result.provider === 'ai_job_search' ? 'AI Job Search + Codex' : 'Поиск по карьерному сайту'}</span>
         </div>
       </div>
       {result.warnings.length > 0 ? <div className="warnings" role="status">{result.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
       {visibleVacancies.length > 0 ? (
-        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} />)}</div>
+        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} applied={applications.some((application) => application.vacancyUrl === vacancy.url)} onApply={onApply} />)}</div>
       ) : (
         <div className="empty-state">
           <h3>{result.vacancies.length > 0 ? 'У этой компании вакансий не найдено' : 'Подходящих вакансий пока нет'}</h3>
@@ -304,6 +388,8 @@ type SearchPageProps = {
   setSelectedIncludeKeywords: (keywords: string[]) => void
   selectedExcludeKeywords: string[]
   setSelectedExcludeKeywords: (keywords: string[]) => void
+  applications: JobApplication[]
+  onApply: (vacancy: Vacancy) => void
   onOpenSettings: () => void
 }
 
@@ -339,7 +425,7 @@ function SelectionDropdown({ label, items, selectedIds, open, onOpenChange, onTo
   )
 }
 
-function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, selectedIncludeKeywords, setSelectedIncludeKeywords, selectedExcludeKeywords, setSelectedExcludeKeywords, onOpenSettings }: SearchPageProps) {
+function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRoleIds, setSelectedRoleIds, selectedIncludeKeywords, setSelectedIncludeKeywords, selectedExcludeKeywords, setSelectedExcludeKeywords, applications, onApply, onOpenSettings }: SearchPageProps) {
   const [result, setResult] = useState<SearchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -393,7 +479,82 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
           </form>
         </section>
       )}
-      {result ? <Results result={result} /> : null}
+      {result ? <Results result={result} applications={applications} onApply={onApply} /> : null}
+    </div>
+  )
+}
+
+type ApplicationsPageProps = {
+  applications: JobApplication[]
+  onUpdate: (id: string, changes: Partial<Pick<JobApplication, 'stage' | 'hrUrl'>>) => void
+  onRemove: (id: string) => void
+  onOpenSearch: () => void
+}
+
+function formatApplicationDate(value: string): string {
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
+}
+
+function ApplicationsPage({ applications, onUpdate, onRemove, onOpenSearch }: ApplicationsPageProps) {
+  const [openStageId, setOpenStageId] = useState<string | null>(null)
+  const stageCounts = Object.fromEntries(APPLICATION_STAGES.map((stage) => [
+    stage.value,
+    applications.filter((application) => application.stage === stage.value).length,
+  ])) as Record<ApplicationStage, number>
+
+  return (
+    <div className="page-content" onClick={() => setOpenStageId(null)}>
+      <section className="page-heading dashboard-heading">
+        <p className="eyebrow">Трекер откликов</p>
+        <h1>Ваши отклики.</h1>
+        <p className="lede">Сохраняйте вакансии, отмечайте этап отбора и держите контакты рекрутеров в одном месте.</p>
+      </section>
+
+      <section className="application-stats" aria-label="Статистика откликов">
+        <article className="application-stat total"><span>Всего</span><strong>{applications.length}</strong></article>
+        {APPLICATION_STAGES.map((stage) => <article className={`application-stat stage-${stage.value}`} key={stage.value}><span>{stage.label}</span><strong>{stageCounts[stage.value]}</strong></article>)}
+      </section>
+
+      {applications.length === 0 ? (
+        <section className="applications-empty">
+          <span aria-hidden="true">↗</span>
+          <h2>Здесь появятся ваши отклики</h2>
+          <p>Найдите подходящую вакансию и нажмите «Я откликнулся».</p>
+          <button type="button" className="primary-button" onClick={onOpenSearch}>Перейти к поиску <span>→</span></button>
+        </section>
+      ) : (
+        <section className="applications-list" aria-label="Список откликов">
+          {applications.map((application) => (
+            <article className="application-card" key={application.id}>
+              <div className="application-company-mark">{application.company.slice(0, 2).toUpperCase()}</div>
+              <div className="application-main">
+                <span className="application-company">{application.company}</span>
+                <h2>{application.vacancyTitle}</h2>
+                <a href={application.vacancyUrl} target="_blank" rel="noreferrer">Открыть вакансию ↗</a>
+                <small>Добавлено {formatApplicationDate(application.createdAt)}</small>
+              </div>
+              <div className="application-field stage-field">
+                <span>Этап отбора</span>
+                <SingleSelect
+                  ariaLabel={`Этап отбора для ${application.vacancyTitle}`}
+                  className="application-stage-select"
+                  value={application.stage}
+                  options={APPLICATION_STAGES.map((stage) => ({ value: stage.value, label: stage.label }))}
+                  open={openStageId === application.id}
+                  onOpenChange={(open) => setOpenStageId(open ? application.id : null)}
+                  onChange={(stage) => onUpdate(application.id, { stage: stage as ApplicationStage })}
+                />
+              </div>
+              <label className="application-field hr-field">
+                <span>Ссылка на HR</span>
+                <input type="url" value={application.hrUrl} onChange={(event) => onUpdate(application.id, { hrUrl: event.target.value })} placeholder="Telegram, LinkedIn или профиль" />
+              </label>
+              <button type="button" className="application-remove" onClick={() => onRemove(application.id)} aria-label={`Удалить отклик ${application.vacancyTitle}`} title="Удалить отклик"><TrashIcon /></button>
+            </article>
+          ))}
+        </section>
+      )}
+      <p className="storage-note">Данные пока сохраняются локально в браузере. Структура подготовлена для будущей синхронизации с Google Sheets.</p>
     </div>
   )
 }
@@ -406,6 +567,7 @@ export default function App() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(initialSelection.roleIds)
   const [selectedIncludeKeywords, setSelectedIncludeKeywords] = useState<string[]>(initialSelection.includeKeywords)
   const [selectedExcludeKeywords, setSelectedExcludeKeywords] = useState<string[]>(initialSelection.excludeKeywords)
+  const [applications, setApplications] = useState<JobApplication[]>(loadApplications)
 
   useEffect(() => {
     saveSearchSelection({
@@ -415,6 +577,18 @@ export default function App() {
       excludeKeywords: selectedExcludeKeywords,
     })
   }, [selectedSiteIds, selectedRoleIds, selectedIncludeKeywords, selectedExcludeKeywords])
+
+  useEffect(() => {
+    saveApplications(applications)
+  }, [applications])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void getRemoteApplications(controller.signal)
+      .then(setApplications)
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -451,19 +625,43 @@ export default function App() {
     setSelectedExcludeKeywords((current) => current.filter((keyword) => nextSettings.excludeKeywords.includes(keyword)))
   }
 
+  function addApplication(vacancy: Vacancy) {
+    setApplications((current) => addVacancyApplication(current, vacancy, createId(), new Date().toISOString()))
+    void createRemoteApplication(vacancy)
+      .then((saved) => setApplications((current) => [saved, ...current.filter((application) => application.vacancyUrl !== saved.vacancyUrl)]))
+      .catch(() => undefined)
+  }
+
+  function changeApplication(id: string, changes: Partial<Pick<JobApplication, 'stage' | 'hrUrl'>>) {
+    setApplications((current) => updateApplication(current, id, changes, new Date().toISOString()))
+    void updateRemoteApplication(id, changes)
+      .then((saved) => setApplications((current) => current.map((application) => application.id === id ? saved : application)))
+      .catch(() => undefined)
+  }
+
+  function removeApplication(id: string) {
+    setApplications((current) => current.filter((application) => application.id !== id))
+    void deleteRemoteApplication(id).catch(() => undefined)
+  }
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
         <button type="button" className="brand" onClick={() => setPage('search')} aria-label="Job Compass — поиск"><span className="brand-mark">JC</span><span>Job Compass</span></button>
         <nav aria-label="Основная навигация">
           <button type="button" className={page === 'search' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('search')}><span aria-hidden="true">⌕</span><span>Поиск вакансий</span></button>
+          <button type="button" className={page === 'applications' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('applications')}><span aria-hidden="true">✓</span><span>Отклики</span>{applications.length > 0 ? <b className="nav-count">{applications.length}</b> : null}</button>
           <button type="button" className={page === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('settings')}><span aria-hidden="true">◫</span><span>Источники и должности</span></button>
         </nav>
         <div className="sidebar-status"><i /><div><strong>Работает локально</strong><span>Данные остаются у вас</span></div></div>
       </aside>
       <main className="main-area">
         <header className="mobile-topbar"><button type="button" className="brand" onClick={() => setPage('search')}><span className="brand-mark">JC</span><span>Job Compass</span></button></header>
-        {page === 'settings' ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} /> : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} onOpenSettings={() => setPage('settings')} />}
+        {page === 'settings'
+          ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} />
+          : page === 'applications'
+            ? <ApplicationsPage applications={applications} onUpdate={changeApplication} onRemove={removeApplication} onOpenSearch={() => setPage('search')} />
+            : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} />}
         <footer><span>Job Compass</span><p>Собирает ссылки. Решение об отклике всегда остаётся за вами.</p></footer>
       </main>
     </div>

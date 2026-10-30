@@ -1,11 +1,21 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
-from app.models import HealthResponse, SearchRequest, SearchResponse, SearchSettingsSnapshot
+from app.models import (
+    ApplicationCreate,
+    ApplicationUpdate,
+    HealthResponse,
+    JobApplication,
+    SearchRequest,
+    SearchResponse,
+    SearchSettingsSnapshot,
+)
 from app.services.ai_job_search import AiJobSearchError
+from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
 from app.services.search import SearchService
 from app.services.settings_store import SettingsStorageError, SupabaseSettingsStore
 
@@ -14,7 +24,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -36,6 +46,13 @@ def get_settings_store(settings: SettingsDependency) -> SupabaseSettingsStore:
 SettingsStoreDependency = Annotated[SupabaseSettingsStore, Depends(get_settings_store)]
 
 
+def get_application_store(settings: SettingsDependency) -> SupabaseApplicationStore:
+    return SupabaseApplicationStore(settings.supabase_url)
+
+
+ApplicationStoreDependency = Annotated[SupabaseApplicationStore, Depends(get_application_store)]
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health(settings: SettingsDependency) -> HealthResponse:
     service = SearchService(settings)
@@ -48,12 +65,17 @@ async def health(settings: SettingsDependency) -> HealthResponse:
 
 @app.post("/api/search", response_model=SearchResponse)
 async def search(
-    request: SearchRequest, service: SearchServiceDependency
+    request: SearchRequest, service: SearchServiceDependency, store: ApplicationStoreDependency
 ) -> SearchResponse:
     try:
-        return await service.search(request)
+        response = await service.search(request)
     except (ValueError, AiJobSearchError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        return await store.track_search(response)
+    except ApplicationStorageError:
+        return response
 
 
 @app.get("/api/settings", response_model=SearchSettingsSnapshot)
@@ -74,3 +96,38 @@ async def write_search_settings(
     except SettingsStorageError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+
+@app.get("/api/applications", response_model=list[JobApplication])
+async def read_applications(store: ApplicationStoreDependency) -> list[JobApplication]:
+    try:
+        return await store.load()
+    except ApplicationStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/applications", response_model=JobApplication)
+async def create_application(
+    payload: ApplicationCreate, store: ApplicationStoreDependency
+) -> JobApplication:
+    try:
+        return await store.create(payload)
+    except ApplicationStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.put("/api/applications/{application_id}", response_model=JobApplication)
+async def write_application(
+    application_id: UUID, payload: ApplicationUpdate, store: ApplicationStoreDependency
+) -> JobApplication:
+    try:
+        return await store.update(application_id, payload)
+    except ApplicationStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/api/applications/{application_id}", status_code=204)
+async def delete_application(application_id: UUID, store: ApplicationStoreDependency) -> None:
+    try:
+        await store.delete(application_id)
+    except ApplicationStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

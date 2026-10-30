@@ -1,5 +1,7 @@
 import type { SearchResponse } from './types'
 import type { SearchSettings } from './search-settings'
+import type { JobApplication } from './applications'
+import type { Vacancy } from './types'
 
 type SearchPayload = {
   sites: string[]
@@ -64,5 +66,69 @@ export async function saveRemoteSearchSettings(settings: SearchSettings): Promis
     body: JSON.stringify(toSettingsPayload(settings)),
   })
   if (!response.ok) throw new Error(`Не удалось сохранить настройки: ${response.status}`)
+}
+
+type ApplicationPayload = {
+  id: string
+  company: string
+  vacancy_title: string
+  vacancy_url: string
+  hr_url: string
+  stage: JobApplication['stage']
+  created_at: string
+  updated_at: string
+}
+
+function fromApplicationPayload(payload: ApplicationPayload): JobApplication {
+  return {
+    id: payload.id,
+    company: payload.company,
+    vacancyTitle: payload.vacancy_title,
+    vacancyUrl: payload.vacancy_url,
+    hrUrl: payload.hr_url,
+    stage: payload.stage,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+  }
+}
+
+export async function getRemoteApplications(signal: AbortSignal): Promise<JobApplication[]> {
+  const response = await fetch('/api/applications', { signal })
+  if (!response.ok) throw new Error(`Хранилище откликов недоступно: ${response.status}`)
+  return (await response.json() as ApplicationPayload[]).map(fromApplicationPayload)
+}
+
+export async function createRemoteApplication(vacancy: Vacancy): Promise<JobApplication> {
+  const response = await fetch('/api/applications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: vacancy.title,
+      company: vacancy.company ?? 'Компания не указана',
+      location: vacancy.location,
+      vacancy_url: vacancy.url,
+      source_site: vacancy.source_site,
+    }),
+  })
+  if (!response.ok) throw new Error(`Не удалось сохранить отклик: ${response.status}`)
+  return fromApplicationPayload(await response.json() as ApplicationPayload)
+}
+
+export async function updateRemoteApplication(
+  id: string,
+  changes: Partial<Pick<JobApplication, 'stage' | 'hrUrl'>>,
+): Promise<JobApplication> {
+  const response = await fetch(`/api/applications/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage: changes.stage, hr_url: changes.hrUrl }),
+  })
+  if (!response.ok) throw new Error(`Не удалось обновить отклик: ${response.status}`)
+  return fromApplicationPayload(await response.json() as ApplicationPayload)
+}
+
+export async function deleteRemoteApplication(id: string): Promise<void> {
+  const response = await fetch(`/api/applications/${id}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(`Не удалось удалить отклик: ${response.status}`)
 }
 
