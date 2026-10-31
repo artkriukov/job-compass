@@ -155,11 +155,12 @@ export async function uploadResume(file: File): Promise<ResumeSnapshot> {
 export async function checkCompatibility(
   vacancy: Vacancy,
   targetRoles: string[],
+  mode: 'quick' | 'full' = 'quick',
 ): Promise<CompatibilityResult> {
   const response = await fetch('/api/career-ops/compatibility', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vacancy, target_roles: targetRoles }),
+    body: JSON.stringify({ vacancy, target_roles: targetRoles, mode }),
   })
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null

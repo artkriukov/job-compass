@@ -71,6 +71,9 @@ def get_career_ops_provider(settings: SettingsDependency) -> CareerOpsProvider:
         node_bin=settings.node_bin,
         doctor_timeout_seconds=settings.career_ops_doctor_timeout_seconds,
         analysis_timeout_seconds=settings.career_ops_analysis_timeout_seconds,
+        quick_model=settings.career_ops_quick_model,
+        groq_api_key=settings.groq_api_key,
+        groq_model=settings.groq_model,
     )
 
 

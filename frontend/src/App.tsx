@@ -211,14 +211,14 @@ const DECISION_LABELS: Record<CompatibilityResult['decision'], string> = {
   apply: 'Откликаться', consider: 'Рассмотреть', research: 'Сначала изучить', skip: 'Пропустить',
 }
 
-function CompatibilityDialog({ vacancy, result, loading, error, onClose, onOpenResume }: { vacancy: Vacancy; result: CompatibilityResult | null; loading: boolean; error: string | null; onClose: () => void; onOpenResume: () => void }) {
+function CompatibilityDialog({ vacancy, result, mode, loading, error, onClose, onOpenResume, onRunFull }: { vacancy: Vacancy; result: CompatibilityResult | null; mode: 'quick' | 'full'; loading: boolean; error: string | null; onClose: () => void; onOpenResume: () => void; onRunFull: () => void }) {
   return <div className="compatibility-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="compatibility-dialog" role="dialog" aria-modal="true" aria-labelledby="compatibility-title" onMouseDown={(event) => event.stopPropagation()}>
       <button type="button" className="dialog-close" aria-label="Закрыть" onClick={onClose}>×</button>
-      <p className="eyebrow">Career Ops · анализ вакансии</p>
+      <p className="eyebrow">Career Ops · {mode === 'quick' ? 'быстрая проверка' : 'полный анализ'}</p>
       <h2 id="compatibility-title">{vacancy.title}</h2>
       <p className="dialog-company">{vacancy.company ?? 'Компания не указана'}</p>
-      {loading ? <div className="compatibility-loading"><span className="spinner" /><strong>Сравниваем вакансию с резюме…</strong><p>Первый анализ может занять несколько минут: Career Ops подготовит локальный профиль и изучит вакансию.</p></div> : null}
+      {loading ? <div className="compatibility-loading"><span className="spinner" /><strong>Сравниваем вакансию с резюме…</strong><p>{mode === 'quick' ? 'Используем уже извлечённый текст вакансии и компактный профиль. Обычно это занимает меньше минуты.' : 'Career Ops формирует полный отчёт A–G, трекер и черновик письма. Это может занять несколько минут.'}</p></div> : null}
       {error ? <div className="compatibility-error" role="alert"><p>{error}</p><button type="button" className="primary-button" onClick={onOpenResume}>Открыть резюме <span>→</span></button></div> : null}
       {result ? <div className="compatibility-content">
         <div className={`compatibility-score decision-${result.decision}`}><strong>{result.score.toFixed(1)}</strong><span>из 5</span><b>{DECISION_LABELS[result.decision]}</b></div>
@@ -228,6 +228,7 @@ function CompatibilityDialog({ vacancy, result, loading, error, onClose, onOpenR
         {result.improvements.length ? <section><h3>Что улучшить в резюме</h3><ol>{result.improvements.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ol></section> : null}
         {result.risks.length ? <section><h3>Риски вакансии</h3><ul>{result.risks.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
         {result.keywords.length ? <section><h3>Ключевые слова для ATS</h3><div className="compatibility-keywords">{result.keywords.map((item) => <span key={item}>{item}</span>)}</div></section> : null}
+        {mode === 'quick' ? <section className="full-analysis-callout"><div><h3>Нужен полный отчёт?</h3><p>Career Ops добавит исследование компании, подробный отчёт A–G и черновик сопроводительного письма. Это отдельный тяжёлый запуск.</p></div><button type="button" className="primary-button" onClick={onRunFull}>Полный отчёт <span>→</span></button></section> : null}
       </div> : null}
     </section>
   </div>
@@ -530,6 +531,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
   const [compatibilityError, setCompatibilityError] = useState<string | null>(null)
   const [checkingUrl, setCheckingUrl] = useState<string | null>(null)
   const [compatibilityCache, setCompatibilityCache] = useState<Record<string, CompatibilityResult>>({})
+  const [compatibilityMode, setCompatibilityMode] = useState<'quick' | 'full'>('quick')
 
   function toggleSelection(ids: string[], id: string): string[] {
     return ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]
@@ -557,10 +559,12 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     }
   }
 
-  async function handleCompatibility(vacancy: Vacancy) {
+  async function handleCompatibility(vacancy: Vacancy, mode: 'quick' | 'full' = 'quick') {
     setCompatibilityVacancy(vacancy)
+    setCompatibilityMode(mode)
     setCompatibilityError(null)
-    const cached = compatibilityCache[vacancy.url]
+    const cacheKey = `${mode}:${vacancy.url}`
+    const cached = compatibilityCache[cacheKey]
     if (cached) {
       setCompatibilityResult(cached)
       return
@@ -568,9 +572,9 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     setCompatibilityResult(null)
     setCheckingUrl(vacancy.url)
     try {
-      const checked = await checkCompatibility(vacancy, settings.roles.map((role) => role.title))
+      const checked = await checkCompatibility(vacancy, settings.roles.map((role) => role.title), mode)
       setCompatibilityResult(checked)
-      setCompatibilityCache((current) => ({ ...current, [vacancy.url]: checked }))
+      setCompatibilityCache((current) => ({ ...current, [cacheKey]: checked }))
     } catch (requestError) {
       setCompatibilityError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить анализ.')
     } finally {
@@ -601,7 +605,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
         </section>
       )}
       {result ? <Results result={result} applications={applications} checkingUrl={checkingUrl} onApply={onApply} onCheck={handleCompatibility} /> : null}
-      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} result={compatibilityResult} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} /> : null}
+      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} result={compatibilityResult} mode={compatibilityMode} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} onRunFull={() => void handleCompatibility(compatibilityVacancy, 'full')} /> : null}
     </div>
   )
 }

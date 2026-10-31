@@ -80,6 +80,10 @@ npx @santifer/career-ops init
 ```env
 CAREER_OPS_PROJECT_ROOT=/absolute/path/to/career-ops
 CAREER_OPS_DATA_DIR=/absolute/path/to/job-compass-data/career-ops
+CAREER_OPS_QUICK_MODEL=gpt-6-luna
+# Optional: quick checks use Groq instead of Codex when this key is set.
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 `GET /api/health` показывает, установлен ли движок, доступен ли Codex и какие файлы onboarding
@@ -88,6 +92,11 @@ CAREER_OPS_DATA_DIR=/absolute/path/to/job-compass-data/career-ops
 
 В разделе «Резюме» можно загрузить PDF, DOCX, TXT или MD размером до 10 МБ. Backend локально
 сохраняет исходник и извлечённый текст в `CAREER_OPS_DATA_DIR`; эта директория исключена из Git.
+
+Проверка совместимости работает в двух режимах. Быстрая проверка использует уже извлечённый
+текст вакансии, компактный prompt и постоянный кеш по версии вакансии и резюме. Полный отчёт
+Career Ops A–G запускается отдельно из окна результата. Если задан `GROQ_API_KEY`, быстрые
+проверки выполняются через Groq; иначе используется `CAREER_OPS_QUICK_MODEL` через Codex CLI.
 Извлечённый текст показывается для проверки, но на этом этапе ещё не становится подтверждённым
 `cv.md` Career Ops и не передаётся модели.
 

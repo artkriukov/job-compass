@@ -79,6 +79,7 @@ CompatibilityMatch = Literal["strong", "partial", "missing", "not_applicable"]
 class CompatibilityRequest(BaseModel):
     vacancy: Vacancy
     target_roles: Annotated[list[str], Field(max_length=20)] = Field(default_factory=list)
+    mode: Literal["quick", "full"] = "quick"
 
 
 class CompatibilityGap(BaseModel):

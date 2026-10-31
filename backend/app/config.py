@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     codex_timeout_seconds: int = Field(default=240, ge=30, le=900)
     career_ops_doctor_timeout_seconds: int = Field(default=15, ge=1, le=60)
     career_ops_analysis_timeout_seconds: int = Field(default=900, ge=60, le=1800)
+    career_ops_quick_model: str = "gpt-6-luna"
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
     max_sites: int = Field(default=20, ge=1, le=50)
     max_results: int = Field(default=100, ge=1, le=500)
     supabase_url: str | None = None
@@ -27,6 +30,7 @@ class Settings(BaseSettings):
         "career_ops_project_root",
         "career_ops_data_dir",
         "supabase_url",
+        "groq_api_key",
         mode="before",
     )
     @classmethod

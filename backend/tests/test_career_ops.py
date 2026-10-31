@@ -2,6 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
 
 from app.models import CompatibilityRequest, Vacancy
@@ -25,6 +26,9 @@ def make_provider(tmp_path: Path) -> CareerOpsProvider:
         node_bin="node",
         doctor_timeout_seconds=5,
         analysis_timeout_seconds=60,
+        quick_model="gpt-6-luna",
+        groq_api_key=None,
+        groq_model="openai/gpt-oss-120b",
     )
 
 
@@ -69,6 +73,9 @@ def test_health_handles_unconfigured_provider() -> None:
         node_bin="missing-node",
         doctor_timeout_seconds=5,
         analysis_timeout_seconds=60,
+        quick_model="gpt-6-luna",
+        groq_api_key=None,
+        groq_model="openai/gpt-oss-120b",
     )
 
     health = provider.health()
@@ -106,6 +113,7 @@ def make_request() -> CompatibilityRequest:
             source_site="https://example.com/jobs",
         ),
         target_roles=["Backend developer"],
+        mode="full",
     )
 
 
@@ -180,3 +188,102 @@ def test_extract_vacancy_page_returns_none_on_browser_failure(
     )
 
     assert provider._extract_vacancy_page("https://example.com/jobs/1") is None
+
+
+def test_compact_job_text_removes_application_form_and_related_jobs() -> None:
+    description = "Описание вакансии. " * 40
+    text = f"{description}\nОТКЛИК НА ВАКАНСИЮ\nИмя\nРезюме\nЕЩЁ ВАРИАНТЫ"
+
+    compact = CareerOpsProvider._compact_job_text(text)
+
+    assert "Описание вакансии" in compact
+    assert "ОТКЛИК НА ВАКАНСИЮ" not in compact
+
+
+def test_quick_evaluation_uses_small_model_and_persistent_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    documents = tmp_path / "user-data/documents"
+    documents.mkdir(parents=True)
+    (documents / "resume-one.txt").write_text("Python and FastAPI production experience")
+    metadata = tmp_path / "user-data/data/resume-upload.json"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text("{}")
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+    codex_calls = 0
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        nonlocal codex_calls
+        if command[1] == "browser-extract.mjs":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "url": "https://example.com/jobs/1",
+                    "title": "Backend developer",
+                    "text": "Backend developer. Python and FastAPI required. Apply now. " * 3,
+                }),
+                "",
+            )
+        codex_calls += 1
+        assert command[command.index("--model") + 1] == "gpt-6-luna"
+        assert command[command.index("--sandbox") + 1] == "read-only"
+        assert "не исследуй компанию" in kwargs["input"]
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text(json.dumps({
+            "score": 4.4,
+            "decision": "apply",
+            "summary": "Хорошее совпадение",
+            "strengths": ["Python"],
+            "gaps": [],
+            "improvements": [],
+            "risks": [],
+            "keywords": ["FastAPI"],
+            "report_path": None,
+        }))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.services.career_ops.subprocess.run", fake_run)
+    request = make_request().model_copy(update={"mode": "quick"})
+
+    first = provider.evaluate(request)
+    second = provider.evaluate(request)
+
+    assert first.score == second.score == 4.4
+    assert codex_calls == 1
+    assert list((tmp_path / "user-data/cache/compatibility").glob("*.json"))
+
+
+def test_quick_evaluation_can_use_groq(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    provider.groq_api_key = "test-key"
+    result_payload = {
+        "score": 3.6,
+        "decision": "consider",
+        "summary": "Частичное совпадение",
+        "strengths": ["Python"],
+        "gaps": [],
+        "improvements": [],
+        "risks": [],
+        "keywords": ["API"],
+        "report_path": None,
+    }
+
+    def fake_post(url, **kwargs):  # noqa: ANN001
+        assert url == "https://api.groq.com/openai/v1/chat/completions"
+        assert kwargs["headers"]["Authorization"] == "Bearer test-key"
+        assert kwargs["json"]["response_format"]["json_schema"]["strict"] is True
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(result_payload)}}]},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("app.services.career_ops.httpx.post", fake_post)
+
+    result = provider._evaluate_quick_with_groq("prompt")
+
+    assert result.decision == "consider"
