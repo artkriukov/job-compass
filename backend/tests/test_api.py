@@ -2,8 +2,21 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from app.main import app, get_application_store, get_search_service, get_settings_store
-from app.models import JobApplication, SearchResponse, SearchSettingsSnapshot, Vacancy
+from app.main import (
+    app,
+    get_application_store,
+    get_career_ops_provider,
+    get_search_service,
+    get_settings_store,
+)
+from app.models import (
+    CompatibilityReport,
+    CompatibilityResult,
+    JobApplication,
+    SearchResponse,
+    SearchSettingsSnapshot,
+    Vacancy,
+)
 from app.services.application_store import ApplicationStorageError
 
 
@@ -82,6 +95,31 @@ class FakeApplicationStore:
 class FailingApplicationTracker(FakeApplicationStore):
     async def track_search(self, response):  # noqa: ANN001
         raise ApplicationStorageError("database unavailable")
+
+
+class FakeCareerOpsProvider:
+    def list_reports(self):  # noqa: ANN201
+        return [
+            CompatibilityReport(
+                id="report-1",
+                vacancy=Vacancy(
+                    title="Support engineer",
+                    company="Example",
+                    location="Remote",
+                    url="https://example.com/jobs/1",
+                    score=90,
+                    reason="совпадает роль",
+                    source_site="https://example.com/jobs",
+                ),
+                mode="quick",
+                result=CompatibilityResult(
+                    score=4.1,
+                    decision="apply",
+                    summary="Хорошее совпадение",
+                ),
+                created_at="2026-10-31T08:00:00Z",
+            )
+        ]
 
 
 def test_search_endpoint() -> None:
@@ -202,4 +240,16 @@ def test_application_endpoints_round_trip() -> None:
     assert listed.json()[0]["vacancy_title"] == "Support engineer"
     assert updated.json()["stage"] == "hr_interview"
     assert deleted.status_code == 204
+
+
+def test_compatibility_reports_endpoint() -> None:
+    app.dependency_overrides[get_career_ops_provider] = lambda: FakeCareerOpsProvider()
+    client = TestClient(app)
+
+    response = client.get("/api/career-ops/reports")
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()[0]["vacancy"]["title"] == "Support engineer"
+    assert response.json()[0]["result"]["score"] == 4.1
 

@@ -1,4 +1,4 @@
-import type { CompatibilityResult, ResumeSnapshot, SearchResponse } from './types'
+import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse } from './types'
 import type { SearchSettings } from './search-settings'
 import type { JobApplication } from './applications'
 import type { Vacancy } from './types'
@@ -167,5 +167,13 @@ export async function checkCompatibility(
     throw new Error(body?.detail ?? `Не удалось проверить совместимость: ${response.status}`)
   }
   return response.json() as Promise<CompatibilityResult>
+}
+
+export async function getCompatibilityReports(
+  signal: AbortSignal,
+): Promise<CompatibilityReport[]> {
+  const response = await fetch('/api/career-ops/reports', { signal })
+  if (!response.ok) throw new Error(`Не удалось загрузить отчёты: ${response.status}`)
+  return response.json() as Promise<CompatibilityReport[]>
 }
 

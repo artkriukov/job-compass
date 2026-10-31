@@ -4,6 +4,7 @@ import {
   createRemoteApplication,
   checkCompatibility,
   deleteRemoteApplication,
+  getCompatibilityReports,
   getRemoteApplications,
   getRemoteSearchSettings,
   getResume,
@@ -38,11 +39,11 @@ import {
   type SavedRole,
   type SearchSettings,
 } from './search-settings'
-import type { CompatibilityResult, ResumeSnapshot, SearchResponse, Vacancy } from './types'
+import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse, Vacancy } from './types'
 import { compatibilityPlainText } from './compatibility'
 import './styles.css'
 
-type Page = 'search' | 'applications' | 'resume' | 'settings'
+type Page = 'search' | 'applications' | 'reports' | 'resume' | 'settings'
 type SettingsSection = 'sites' | 'roles' | 'keywords'
 
 const SETTINGS_SECTIONS: SettingsSection[] = ['sites', 'roles', 'keywords']
@@ -211,7 +212,7 @@ const DECISION_LABELS: Record<CompatibilityResult['decision'], string> = {
   apply: 'Откликаться', consider: 'Рассмотреть', research: 'Сначала изучить', skip: 'Пропустить',
 }
 
-function CompatibilityDialog({ vacancy, result, mode, loading, error, onClose, onOpenResume, onRunFull }: { vacancy: Vacancy; result: CompatibilityResult | null; mode: 'quick' | 'full'; loading: boolean; error: string | null; onClose: () => void; onOpenResume: () => void; onRunFull: () => void }) {
+function CompatibilityDialog({ vacancy, result, mode, loading, error, document, onClose, onOpenResume, onRunFull }: { vacancy: Vacancy; result: CompatibilityResult | null; mode: 'quick' | 'full'; loading: boolean; error: string | null; document?: string | null; onClose: () => void; onOpenResume?: () => void; onRunFull?: () => void }) {
   return <div className="compatibility-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="compatibility-dialog" role="dialog" aria-modal="true" aria-labelledby="compatibility-title" onMouseDown={(event) => event.stopPropagation()}>
       <button type="button" className="dialog-close" aria-label="Закрыть" onClick={onClose}>×</button>
@@ -219,7 +220,7 @@ function CompatibilityDialog({ vacancy, result, mode, loading, error, onClose, o
       <h2 id="compatibility-title">{vacancy.title}</h2>
       <p className="dialog-company">{vacancy.company ?? 'Компания не указана'}</p>
       {loading ? <div className="compatibility-loading"><span className="spinner" /><strong>Сравниваем вакансию с резюме…</strong><p>{mode === 'quick' ? 'Используем уже извлечённый текст вакансии и компактный профиль. Обычно это занимает меньше минуты.' : 'Career Ops формирует полный отчёт A–G, трекер и черновик письма. Это может занять несколько минут.'}</p></div> : null}
-      {error ? <div className="compatibility-error" role="alert"><p>{error}</p><button type="button" className="primary-button" onClick={onOpenResume}>Открыть резюме <span>→</span></button></div> : null}
+      {error ? <div className="compatibility-error" role="alert"><p>{error}</p>{onOpenResume ? <button type="button" className="primary-button" onClick={onOpenResume}>Открыть резюме <span>→</span></button> : null}</div> : null}
       {result ? <div className="compatibility-content">
         <div className={`compatibility-score decision-${result.decision}`}><strong>{result.score.toFixed(1)}</strong><span>из 5</span><b>{DECISION_LABELS[result.decision]}</b></div>
         <p className="compatibility-summary">{compatibilityPlainText(result.summary)}</p>
@@ -228,7 +229,8 @@ function CompatibilityDialog({ vacancy, result, mode, loading, error, onClose, o
         {result.improvements.length ? <section><h3>Что улучшить в резюме</h3><ol>{result.improvements.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ol></section> : null}
         {result.risks.length ? <section><h3>Риски вакансии</h3><ul>{result.risks.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
         {result.keywords.length ? <section><h3>Ключевые слова для ATS</h3><div className="compatibility-keywords">{result.keywords.map((item) => <span key={item}>{item}</span>)}</div></section> : null}
-        {mode === 'quick' ? <section className="full-analysis-callout"><div><h3>Нужен полный отчёт?</h3><p>Career Ops добавит исследование компании, подробный отчёт A–G и черновик сопроводительного письма. Это отдельный тяжёлый запуск.</p></div><button type="button" className="primary-button" onClick={onRunFull}>Полный отчёт <span>→</span></button></section> : null}
+        {document ? <section className="compatibility-document"><h3>Полный отчёт Career Ops</h3><pre>{document}</pre></section> : null}
+        {mode === 'quick' && onRunFull ? <section className="full-analysis-callout"><div><h3>Нужен полный отчёт?</h3><p>Career Ops добавит исследование компании, подробный отчёт A–G и черновик сопроводительного письма. Это отдельный тяжёлый запуск.</p></div><button type="button" className="primary-button" onClick={onRunFull}>Полный отчёт <span>→</span></button></section> : null}
       </div> : null}
     </section>
   </div>
@@ -685,6 +687,64 @@ function ApplicationsPage({ applications, onUpdate, onRemove, onOpenSearch }: Ap
   )
 }
 
+function ReportsPage({ onOpenSearch }: { onOpenSearch: () => void }) {
+  const [reports, setReports] = useState<CompatibilityReport[]>([])
+  const [selectedReport, setSelectedReport] = useState<CompatibilityReport | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void getCompatibilityReports(controller.signal)
+      .then(setReports)
+      .catch((requestError) => {
+        if (requestError instanceof DOMException && requestError.name === 'AbortError') return
+        setError(requestError instanceof Error ? requestError.message : 'Не удалось загрузить отчёты.')
+      })
+      .finally(() => setLoading(false))
+    return () => controller.abort()
+  }, [])
+
+  return (
+    <div className="page-content">
+      <section className="page-heading dashboard-heading">
+        <p className="eyebrow">Career Ops</p>
+        <h1>Отчёты.</h1>
+        <p className="lede">Все проведённые проверки совместимости сохраняются локально и доступны без повторного анализа.</p>
+      </section>
+
+      {error ? <p className="error" role="alert">{error}</p> : null}
+      {loading ? <p className="reports-loading">Загружаем сохранённые отчёты…</p> : null}
+      {!loading && !error && reports.length === 0 ? (
+        <section className="applications-empty">
+          <span aria-hidden="true">▤</span>
+          <h2>Отчётов пока нет</h2>
+          <p>Найдите вакансию и запустите проверку совместимости.</p>
+          <button type="button" className="primary-button" onClick={onOpenSearch}>Перейти к поиску <span>→</span></button>
+        </section>
+      ) : null}
+      {reports.length > 0 ? (
+        <section className="reports-panel" aria-label="Сохранённые отчёты">
+          <div className="reports-table-scroll">
+            <table className="reports-table">
+              <thead><tr><th>Вакансия</th><th>Ссылка</th><th>Совместимость</th><th><span className="visually-hidden">Действие</span></th></tr></thead>
+              <tbody>{reports.map((report) => (
+                <tr key={report.id}>
+                  <td><strong>{report.vacancy.title}</strong><span>{report.vacancy.company ?? 'Компания не указана'} · {report.mode === 'full' ? 'Полный' : 'Быстрый'}</span></td>
+                  <td><a href={report.vacancy.url} target="_blank" rel="noreferrer">Открыть вакансию ↗</a></td>
+                  <td><span className={`report-score decision-${report.result.decision}`}><b>{report.result.score.toFixed(1)}</b> из 5</span></td>
+                  <td><button type="button" className="report-open-button" onClick={() => setSelectedReport(report)}>Открыть отчёт</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+      {selectedReport ? <CompatibilityDialog vacancy={selectedReport.vacancy} result={selectedReport.result} mode={selectedReport.mode} loading={false} error={null} document={selectedReport.content} onClose={() => setSelectedReport(null)} /> : null}
+    </div>
+  )
+}
+
 function formatFileSize(value: number): string {
   if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} КБ`
   return `${(value / (1024 * 1024)).toFixed(1)} МБ`
@@ -862,8 +922,9 @@ export default function App() {
         <nav aria-label="Основная навигация">
           <button type="button" className={page === 'search' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('search')}><span aria-hidden="true">⌕</span><span>Поиск вакансий</span></button>
           <button type="button" className={page === 'applications' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('applications')}><span aria-hidden="true">✓</span><span>Отклики</span>{applications.length > 0 ? <b className="nav-count">{applications.length}</b> : null}</button>
+          <button type="button" className={page === 'reports' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('reports')}><span aria-hidden="true">▥</span><span>Отчёты</span></button>
           <button type="button" className={page === 'resume' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('resume')}><span aria-hidden="true">▤</span><span>Резюме</span></button>
-          <button type="button" className={page === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('settings')}><span aria-hidden="true">◫</span><span>Источники и должности</span></button>
+          <button type="button" className={page === 'settings' ? 'nav-item active' : 'nav-item'} onClick={() => setPage('settings')}><span aria-hidden="true">◫</span><span>Настройки</span></button>
         </nav>
         <div className="sidebar-status"><i /><div><strong>Работает локально</strong><span>Данные остаются у вас</span></div></div>
       </aside>
@@ -873,6 +934,8 @@ export default function App() {
           ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} />
           : page === 'resume'
             ? <ResumePage />
+          : page === 'reports'
+            ? <ReportsPage onOpenSearch={() => setPage('search')} />
           : page === 'applications'
             ? <ApplicationsPage applications={applications} onUpdate={changeApplication} onRemove={removeApplication} onOpenSearch={() => setPage('search')} />
             : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} onOpenResume={() => setPage('resume')} />}

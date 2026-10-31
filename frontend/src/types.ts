@@ -46,3 +46,12 @@ export type CompatibilityResult = {
   report_path: string | null
 }
 
+export type CompatibilityReport = {
+  id: string
+  vacancy: Vacancy
+  mode: 'quick' | 'full'
+  result: CompatibilityResult
+  created_at: string
+  content: string | null
+}
+

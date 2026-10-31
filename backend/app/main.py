@@ -8,6 +8,7 @@ from app.config import Settings, get_settings
 from app.models import (
     ApplicationCreate,
     ApplicationUpdate,
+    CompatibilityReport,
     CompatibilityRequest,
     CompatibilityResult,
     HealthResponse,
@@ -133,6 +134,16 @@ async def check_compatibility(
         return career_ops.evaluate(payload)
     except CareerOpsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/career-ops/reports", response_model=list[CompatibilityReport])
+async def read_compatibility_reports(
+    career_ops: CareerOpsDependency,
+) -> list[CompatibilityReport]:
+    try:
+        return career_ops.list_reports()
+    except CareerOpsError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/api/search", response_model=SearchResponse)

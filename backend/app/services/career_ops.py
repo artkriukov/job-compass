@@ -1,13 +1,20 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 
-from app.models import CareerOpsHealth, CompatibilityRequest, CompatibilityResult
+from app.models import (
+    CareerOpsHealth,
+    CompatibilityReport,
+    CompatibilityRequest,
+    CompatibilityResult,
+)
 
 
 class CareerOpsError(RuntimeError):
@@ -135,6 +142,7 @@ class CareerOpsProvider:
         cache_path = self._compatibility_cache_path(request, page_snapshot, candidate_text)
         cached = self._load_cached_result(cache_path)
         if cached:
+            self._save_report(cache_path.stem, request, cached)
             return cached
         if request.mode == "quick":
             result = self._evaluate_quick(request, page_snapshot, candidate_text)
@@ -143,7 +151,92 @@ class CareerOpsProvider:
                 raise CareerOpsError("Codex CLI недоступен для полного отчёта")
             result = self._evaluate_full(request, page_snapshot)
         self._save_cached_result(cache_path, result)
+        self._save_report(cache_path.stem, request, result)
         return result
+
+    def list_reports(self) -> list[CompatibilityReport]:
+        if not self.data_dir:
+            raise CareerOpsError("CAREER_OPS_DATA_DIR не настроен")
+        path = self._reports_path()
+        reports: list[CompatibilityReport] = []
+        if path.exists():
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                reports = [CompatibilityReport.model_validate(item) for item in payload]
+            except (OSError, ValueError, TypeError) as exc:
+                raise CareerOpsError("Не удалось прочитать историю отчётов") from exc
+        report_paths = {item.result.report_path for item in reports if item.result.report_path}
+        reports = [self._with_report_content(item) for item in reports]
+        reports.extend(self._legacy_reports(report_paths))
+        return sorted(reports, key=lambda item: item.created_at, reverse=True)
+
+    def _with_report_content(self, report: CompatibilityReport) -> CompatibilityReport:
+        content = self._read_report_content(report.result.report_path)
+        return report.model_copy(update={"content": content}) if content else report
+
+    def _legacy_reports(self, indexed_paths: set[str]) -> list[CompatibilityReport]:
+        if not self.data_dir:
+            return []
+        reports: list[CompatibilityReport] = []
+        for path in sorted((self.data_dir / "reports").glob("*.md")):
+            relative_path = str(path.relative_to(self.data_dir))
+            if relative_path in indexed_paths:
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+                heading = re.search(r"^# Оценка: (.+?) — (.+)$", content, re.MULTILINE)
+                url_match = re.search(r"^\*\*URL:\*\* (\S+)$", content, re.MULTILINE)
+                score_match = re.search(
+                    r"^\*\*Score:\*\* ([1-5](?:\.\d)?)/5$", content, re.MULTILINE
+                )
+                date_match = re.search(
+                    r"^\*\*Date:\*\* (\d{4}-\d{2}-\d{2})$", content, re.MULTILINE
+                )
+                if not all((heading, url_match, score_match, date_match)):
+                    continue
+                company, title = heading.group(1), heading.group(2)
+                url = url_match.group(1)
+                score = float(score_match.group(1))
+                decision = (
+                    "apply" if score >= 4 else "consider" if score >= 3.5
+                    else "research" if score >= 3 else "skip"
+                )
+                reports.append(CompatibilityReport(
+                    id=f"career-ops:{relative_path}",
+                    vacancy={
+                        "title": title,
+                        "company": company,
+                        "location": None,
+                        "url": url,
+                        "score": round(score * 20),
+                        "reason": "Сохранённый полный отчёт Career Ops",
+                        "source_site": url,
+                    },
+                    mode="full",
+                    result=CompatibilityResult(
+                        score=score,
+                        decision=decision,
+                        summary="Полный отчёт Career Ops сохранён локально.",
+                        report_path=relative_path,
+                    ),
+                    created_at=datetime.fromisoformat(date_match.group(1)).replace(tzinfo=UTC),
+                    content=content,
+                ))
+            except (OSError, ValueError):
+                continue
+        return reports
+
+    def _read_report_content(self, report_path: str | None) -> str | None:
+        if not report_path or not self.data_dir:
+            return None
+        try:
+            base = self.data_dir.resolve()
+            path = (self.data_dir / report_path).resolve()
+            if not path.is_relative_to(base) or not path.is_file():
+                return None
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            return None
 
     def _evaluate_full(
         self,
@@ -384,6 +477,41 @@ URL: {vacancy.url}
         )
         digest = hashlib.sha256(payload.encode()).hexdigest()
         return self.data_dir / "cache/compatibility" / f"{digest}.json"
+
+    def _reports_path(self) -> Path:
+        if not self.data_dir:
+            raise CareerOpsError("CAREER_OPS_DATA_DIR не настроен")
+        return self.data_dir / "data/compatibility-reports.json"
+
+    def _save_report(
+        self,
+        report_id: str,
+        request: CompatibilityRequest,
+        result: CompatibilityResult,
+    ) -> None:
+        path = self._reports_path()
+        reports = self.list_reports() if path.exists() else []
+        existing = next((item for item in reports if item.id == report_id), None)
+        created_at = existing.created_at if existing else datetime.now(UTC)
+        report = CompatibilityReport(
+            id=report_id,
+            vacancy=request.vacancy,
+            mode=request.mode,
+            result=result,
+            created_at=created_at,
+        )
+        updated = [report, *(item for item in reports if item.id != report_id)]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                [item.model_dump(mode="json") for item in updated],
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        temporary.replace(path)
 
     @staticmethod
     def _load_cached_result(path: Path) -> CompatibilityResult | None:

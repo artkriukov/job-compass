@@ -253,6 +253,43 @@ def test_quick_evaluation_uses_small_model_and_persistent_cache(
     assert first.score == second.score == 4.4
     assert codex_calls == 1
     assert list((tmp_path / "user-data/cache/compatibility").glob("*.json"))
+    reports = provider.list_reports()
+    assert len(reports) == 1
+    assert reports[0].vacancy.title == "Backend developer"
+    assert reports[0].mode == "quick"
+    assert reports[0].result.score == 4.4
+
+
+def test_list_reports_returns_empty_history(tmp_path: Path) -> None:
+    provider = make_provider(tmp_path)
+
+    assert provider.list_reports() == []
+
+
+def test_list_reports_imports_existing_career_ops_markdown(tmp_path: Path) -> None:
+    provider = make_provider(tmp_path)
+    reports_dir = tmp_path / "user-data/reports"
+    reports_dir.mkdir(parents=True)
+    (reports_dir / "001-example-2026-10-30.md").write_text(
+        """# Оценка: Example — Backend developer
+
+**Date:** 2026-10-30
+**URL:** https://example.com/jobs/1
+**Score:** 3.8/5
+
+## Machine Summary
+Полный сохранённый отчёт.
+""",
+        encoding="utf-8",
+    )
+
+    reports = provider.list_reports()
+
+    assert len(reports) == 1
+    assert reports[0].vacancy.title == "Backend developer"
+    assert reports[0].result.score == 3.8
+    assert reports[0].result.decision == "consider"
+    assert reports[0].content and "Machine Summary" in reports[0].content
 
 
 def test_quick_evaluation_can_use_groq(

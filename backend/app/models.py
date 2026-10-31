@@ -102,6 +102,15 @@ class CompatibilityResult(BaseModel):
     report_path: str | None = None
 
 
+class CompatibilityReport(BaseModel):
+    id: str
+    vacancy: Vacancy
+    mode: Literal["quick", "full"]
+    result: CompatibilityResult
+    created_at: datetime
+    content: str | None = None
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]
