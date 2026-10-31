@@ -758,7 +758,7 @@ function ApplicationsPage({ applications, onUpdate, onRemove, onOpenSearch }: Ap
   )
 }
 
-function ReportsPage({ onOpenSearch }: { onOpenSearch: () => void }) {
+function ReportsPage({ visible, onOpenSearch }: { visible: boolean; onOpenSearch: () => void }) {
   const [reports, setReports] = useState<CompatibilityReport[]>([])
   const [selectedReport, setSelectedReport] = useState<CompatibilityReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -766,26 +766,29 @@ function ReportsPage({ onOpenSearch }: { onOpenSearch: () => void }) {
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
+    if (!visible) return
     const controller = new AbortController()
-    let active = true
-    setLoading(true)
-    setError(null)
-    void getCompatibilityReports(controller.signal)
-      .then((loadedReports) => {
-        if (active) setReports(loadedReports)
-      })
-      .catch((requestError) => {
-        if (!active || requestError instanceof DOMException && requestError.name === 'AbortError') return
+    let mounted = true
+    void (async () => {
+      await Promise.resolve()
+      if (!mounted) return
+      setLoading(true)
+      setError(null)
+      try {
+        const loadedReports = await getCompatibilityReports(controller.signal)
+        if (mounted) setReports(loadedReports)
+      } catch (requestError) {
+        if (!mounted || requestError instanceof DOMException && requestError.name === 'AbortError') return
         setError(requestError instanceof Error ? requestError.message : 'Не удалось загрузить отчёты.')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    })()
     return () => {
-      active = false
+      mounted = false
       controller.abort()
     }
-  }, [reloadKey])
+  }, [visible, reloadKey])
 
   return (
     <div className="page-content">
@@ -1012,15 +1015,21 @@ export default function App() {
       </aside>
       <main className="main-area">
         <header className="mobile-topbar"><button type="button" className="brand" onClick={() => setPage('search')}><span className="brand-mark">JC</span><span>Job Compass</span></button></header>
-        {page === 'settings'
-          ? <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} />
-          : page === 'resume'
-            ? <ResumePage />
-          : page === 'reports'
-            ? <ReportsPage onOpenSearch={() => setPage('search')} />
-          : page === 'applications'
-            ? <ApplicationsPage applications={applications} onUpdate={changeApplication} onRemove={removeApplication} onOpenSearch={() => setPage('search')} />
-            : <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} onOpenResume={() => setPage('resume')} />}
+        <div hidden={page !== 'search'}>
+          <SearchPage settings={settings} selectedSiteIds={selectedSiteIds} setSelectedSiteIds={setSelectedSiteIds} selectedRoleIds={selectedRoleIds} setSelectedRoleIds={setSelectedRoleIds} selectedIncludeKeywords={selectedIncludeKeywords} setSelectedIncludeKeywords={setSelectedIncludeKeywords} selectedExcludeKeywords={selectedExcludeKeywords} setSelectedExcludeKeywords={setSelectedExcludeKeywords} applications={applications} onApply={addApplication} onOpenSettings={() => setPage('settings')} onOpenResume={() => setPage('resume')} />
+        </div>
+        <div hidden={page !== 'applications'}>
+          <ApplicationsPage applications={applications} onUpdate={changeApplication} onRemove={removeApplication} onOpenSearch={() => setPage('search')} />
+        </div>
+        <div hidden={page !== 'reports'}>
+          <ReportsPage visible={page === 'reports'} onOpenSearch={() => setPage('search')} />
+        </div>
+        <div hidden={page !== 'resume'}>
+          <ResumePage />
+        </div>
+        <div hidden={page !== 'settings'}>
+          <SettingsPage settings={settings} onChange={updateSettings} onOpenSearch={() => setPage('search')} />
+        </div>
         <footer><span>Job Compass</span><p>Собирает ссылки. Решение об отклике всегда остаётся за вами.</p></footer>
       </main>
     </div>
