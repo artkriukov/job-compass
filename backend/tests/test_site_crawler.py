@@ -8,6 +8,7 @@ from app.services.html_search import (
     SiteCrawlerProvider,
     _is_detail_url,
     _search_urls,
+    extract_single_vacancy,
     extract_vacancies,
 )
 
@@ -73,6 +74,61 @@ def test_extracts_job_posting_json_ld() -> None:
     assert len(vacancies) == 1
     assert vacancies[0].score == 100
     assert vacancies[0].location == "Remote"
+
+
+def test_extracts_single_vacancy_from_direct_url() -> None:
+    html = """
+    <script type="application/ld+json">
+    {
+      "@type": "JobPosting",
+      "title": "Python Backend Developer",
+      "description": "<p>FastAPI and PostgreSQL</p>",
+      "hiringOrganization": {"name": "Example Corp"},
+      "jobLocation": {"address": {"addressLocality": "Remote"}}
+    }
+    </script>
+    """
+
+    vacancy = extract_single_vacancy(html, "https://jobs.example.com/openings/42")
+
+    assert vacancy.title == "Python Backend Developer"
+    assert vacancy.company == "Example Corp"
+    assert vacancy.location == "Remote"
+    assert vacancy.description == "FastAPI and PostgreSQL"
+    assert str(vacancy.source_site) == "https://jobs.example.com/"
+
+
+def test_extracts_single_vacancy_from_visible_page_content() -> None:
+    html = """
+    <main>
+      <h1>Инженер технической поддержки</h1>
+      <div class="company-name">Example Telecom</div>
+      <div class="job-location">Москва</div>
+      <p>Поддержка Linux-систем и диагностика TCP/IP.</p>
+    </main>
+    """
+
+    vacancy = extract_single_vacancy(html, "https://example.com/vacancy/42")
+
+    assert vacancy.title == "Инженер технической поддержки"
+    assert vacancy.company == "Example Telecom"
+    assert vacancy.location == "Москва"
+    assert "диагностика TCP/IP" in (vacancy.description or "")
+
+
+def test_import_vacancy_fetches_direct_page(monkeypatch) -> None:  # noqa: ANN001
+    provider = SiteCrawlerProvider(max_results=20)
+    html = '<h1>Python Developer</h1><div class="company">Example</div>'
+    monkeypatch.setattr(
+        provider,
+        "_fetch_html",
+        AsyncMock(return_value=(html, "https://example.com/jobs/42", None)),
+    )
+
+    vacancy = asyncio.run(provider.import_vacancy("https://example.com/jobs/42"))
+
+    assert vacancy.title == "Python Developer"
+    assert vacancy.company == "Example"
 
 
 def test_generic_crawler_uses_site_search_and_returns_direct_link(monkeypatch) -> None:  # noqa: ANN001

@@ -23,6 +23,8 @@ from app.models import (
     SearchSettingsSnapshot,
     TailoredResume,
     TailoredResumeRequest,
+    Vacancy,
+    VacancyImportRequest,
 )
 from app.services.ai_job_search import AiJobSearchError
 from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
@@ -314,6 +316,24 @@ async def search(
         return await store.track_search(response)
     except ApplicationStorageError:
         return response
+
+
+@app.post("/api/vacancies/import", response_model=Vacancy)
+async def import_vacancy(
+    payload: VacancyImportRequest,
+    service: SearchServiceDependency,
+    store: ApplicationStoreDependency,
+) -> Vacancy:
+    try:
+        vacancy = await service.import_vacancy(str(payload.url))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response = SearchResponse(provider="site_crawler", vacancies=[vacancy])
+    try:
+        tracked = await store.track_search(response)
+        return tracked.vacancies[0]
+    except ApplicationStorageError:
+        return vacancy
 
 
 @app.get("/api/settings", response_model=SearchSettingsSnapshot)

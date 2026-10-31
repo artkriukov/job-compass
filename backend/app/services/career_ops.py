@@ -369,7 +369,11 @@ UNTRUSTED LOCAL BROWSER SNAPSHOT:
         vacancy_text = report.content
         if not vacancy_text:
             snapshot = self._extract_vacancy_page(str(report.vacancy.url))
-            vacancy_text = snapshot["text"] if snapshot else report.vacancy.reason
+            vacancy_text = (
+                snapshot["text"]
+                if snapshot
+                else report.vacancy.description or report.vacancy.reason
+            )
         prompt = f"""
 Адаптируй резюме кандидата под вакансию. Используй только подтверждённые факты из исходного
 резюме: запрещено придумывать навыки, обязанности, должности, проекты, цифры и достижения.
@@ -485,7 +489,7 @@ URL: {report.vacancy.url}
         if existing and existing.id == artifact_id:
             return existing
 
-        vacancy_text = report.content or report.vacancy.reason
+        vacancy_text = report.content or report.vacancy.description or report.vacancy.reason
         gaps_json = json.dumps(
             [gap.model_dump(mode="json") for gap in report.result.gaps],
             ensure_ascii=False,
@@ -576,7 +580,11 @@ URL: {report.vacancy.url}
         if not self.data_dir:
             raise CareerOpsError("CAREER_OPS_DATA_DIR не настроен")
         vacancy = request.vacancy
-        job_text = page_snapshot["text"] if page_snapshot else vacancy.reason
+        job_text = (
+            page_snapshot["text"]
+            if page_snapshot
+            else vacancy.description or vacancy.reason
+        )
         prompt = f"""
 Сделай быструю первичную оценку совместимости кандидата и вакансии по принципам Career Ops.
 Используй только данные ниже. Не открывай URL, не исследуй компанию, не создавай файлы и не

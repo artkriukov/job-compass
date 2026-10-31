@@ -1,5 +1,5 @@
 from app.config import Settings
-from app.models import SearchRequest, SearchResponse
+from app.models import SearchRequest, SearchResponse, Vacancy
 from app.services.ai_job_search import AiJobSearchError, AiJobSearchProvider
 from app.services.html_search import SiteCrawlerProvider
 
@@ -55,4 +55,7 @@ class SearchService:
 
         vacancies, warnings = await self.crawler.search(request)
         return SearchResponse(provider="site_crawler", vacancies=vacancies, warnings=warnings)
+
+    async def import_vacancy(self, url: str) -> Vacancy:
+        return await self.crawler.import_vacancy(url)
 

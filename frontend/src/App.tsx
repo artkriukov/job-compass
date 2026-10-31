@@ -10,6 +10,7 @@ import {
   getRemoteApplications,
   getRemoteSearchSettings,
   getResume,
+  importVacancy,
   saveRemoteSearchSettings,
   searchVacancies,
   uploadResume,
@@ -635,6 +636,9 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
   const [compatibilityDocument, setCompatibilityDocument] = useState<string | null>(null)
   const [compatibilitySourceReport, setCompatibilitySourceReport] = useState<CompatibilityReport | null>(null)
   const [reports, setReports] = useState<CompatibilityReport[]>([])
+  const [manualVacancyUrl, setManualVacancyUrl] = useState('')
+  const [manualVacancyLoading, setManualVacancyLoading] = useState(false)
+  const [manualVacancyError, setManualVacancyError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -665,6 +669,28 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
       setError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить поиск.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleManualVacancy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setManualVacancyError(null)
+    setManualVacancyLoading(true)
+    try {
+      const vacancy = await importVacancy(manualVacancyUrl.trim())
+      const importedResult: SearchResponse = {
+        provider: 'site_crawler',
+        vacancies: [vacancy],
+        warnings: [],
+      }
+      setResult((current) => current
+        ? mergeSearchResponses([current, importedResult])
+        : importedResult)
+      setManualVacancyUrl('')
+    } catch (requestError) {
+      setManualVacancyError(requestError instanceof Error ? requestError.message : 'Не удалось добавить вакансию.')
+    } finally {
+      setManualVacancyLoading(false)
     }
   }
 
@@ -726,6 +752,14 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
           </form>
         </section>
       )}
+      <section className="manual-vacancy-panel">
+        <div><p className="eyebrow">Одна вакансия</p><h2>Добавить по ссылке</h2><p>Вставьте прямую ссылку — мы извлечём данные и покажем карточку с проверкой совместимости.</p></div>
+        <form onSubmit={handleManualVacancy}>
+          <label><span className="visually-hidden">Ссылка на вакансию</span><input type="url" value={manualVacancyUrl} onChange={(event) => setManualVacancyUrl(event.target.value)} placeholder="https://company.ru/jobs/123" required /></label>
+          <button type="submit" className="primary-button" disabled={manualVacancyLoading}>{manualVacancyLoading ? <><span className="spinner" /> Добавляем…</> : <>Добавить вакансию <span>→</span></>}</button>
+          {manualVacancyError ? <p className="error" role="alert">{manualVacancyError}</p> : null}
+        </form>
+      </section>
       {result ? <Results result={result} reports={reports} applications={applications} checkingUrl={checkingUrl} onApply={onApply} onCheck={handleCompatibility} onOpenReport={openSavedReport} /> : null}
       {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} report={compatibilitySourceReport} result={compatibilityResult} mode={compatibilityMode} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} document={compatibilityDocument} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} onRunFull={() => void handleCompatibility(compatibilityVacancy, 'full')} /> : null}
     </div>

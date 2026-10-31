@@ -41,6 +41,18 @@ class FakeService:
             warnings=[],
         )
 
+    async def import_vacancy(self, url):  # noqa: ANN001, ANN201
+        return Vacancy(
+            title="Python Developer",
+            company="Example",
+            location="Remote",
+            url=url,
+            score=100,
+            reason="Добавлено вручную по ссылке",
+            source_site="https://example.com",
+            description="FastAPI and PostgreSQL",
+        )
+
 
 class FailingService:
     async def search(self, _request):  # noqa: ANN001
@@ -190,6 +202,22 @@ def test_search_endpoint() -> None:
     app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["vacancies"][0]["score"] == 95
+
+
+def test_import_vacancy_endpoint() -> None:
+    app.dependency_overrides[get_search_service] = lambda: FakeService()
+    app.dependency_overrides[get_application_store] = lambda: FakeApplicationStore()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/vacancies/import",
+        json={"url": "https://example.com/jobs/42"},
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["title"] == "Python Developer"
+    assert response.json()["description"] == "FastAPI and PostgreSQL"
 
 
 def test_search_rejects_invalid_url() -> None:

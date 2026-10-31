@@ -6,6 +6,7 @@ export type Vacancy = {
   score: number
   reason: string
   source_site: string
+  description?: string | null
   seen_before: boolean
   applied: boolean
 }

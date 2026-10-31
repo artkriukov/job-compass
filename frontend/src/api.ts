@@ -28,6 +28,19 @@ export async function searchVacancies(
   return response.json() as Promise<SearchResponse>
 }
 
+export async function importVacancy(url: string): Promise<Vacancy> {
+  const response = await fetch('/api/vacancies/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Не удалось добавить вакансию: ${response.status}`)
+  }
+  return response.json() as Promise<Vacancy>
+}
+
 type SettingsPayload = {
   sites: SearchSettings['sites']
   roles: SearchSettings['roles']

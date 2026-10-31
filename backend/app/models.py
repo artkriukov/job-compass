@@ -39,6 +39,7 @@ class Vacancy(BaseModel):
     score: int = Field(ge=0, le=100)
     reason: str
     source_site: HttpUrl
+    description: str | None = None
     seen_before: bool = False
     applied: bool = False
 
@@ -47,6 +48,10 @@ class SearchResponse(BaseModel):
     provider: Literal["ai_job_search", "site_crawler"]
     vacancies: list[Vacancy]
     warnings: list[str] = Field(default_factory=list)
+
+
+class VacancyImportRequest(BaseModel):
+    url: HttpUrl
 
 
 class CareerOpsHealth(BaseModel):

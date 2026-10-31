@@ -146,6 +146,95 @@ def _json_ld_vacancies(
     return found
 
 
+def extract_single_vacancy(html: str, source_url: str) -> Vacancy:
+    soup = BeautifulSoup(html, "html.parser")
+    title = ""
+    company = ""
+    location: str | None = None
+    description = ""
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        try:
+            payload = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        queue = payload if isinstance(payload, list) else [payload]
+        while queue:
+            item = queue.pop()
+            if not isinstance(item, dict):
+                continue
+            graph = item.get("@graph")
+            if isinstance(graph, list):
+                queue.extend(graph)
+            item_type = item.get("@type")
+            types = item_type if isinstance(item_type, list) else [item_type]
+            if "JobPosting" not in types:
+                continue
+            title = _clean_text(str(item.get("title") or ""))
+            organization = item.get("hiringOrganization") or {}
+            if isinstance(organization, dict):
+                company = _clean_text(str(organization.get("name") or ""))
+            location_data = item.get("jobLocation") or {}
+            if isinstance(location_data, list):
+                location_data = location_data[0] if location_data else {}
+            address = location_data.get("address") or {} if isinstance(location_data, dict) else {}
+            if isinstance(address, dict):
+                location = _clean_text(str(address.get("addressLocality") or "")) or None
+            description = _clean_text(
+                BeautifulSoup(str(item.get("description") or ""), "html.parser").get_text(" ")
+            )
+            break
+        if title:
+            break
+
+    if not title:
+        heading = soup.select_one('h1, [itemprop="title"], [class*="vacancy"][class*="title"]')
+        title = _clean_text(heading.get_text(" ", strip=True)) if heading else ""
+    if not title:
+        meta_title = soup.select_one('meta[property="og:title"], meta[name="twitter:title"]')
+        title = _clean_text(str(meta_title.get("content") or "")) if meta_title else ""
+    if not title and soup.title:
+        title = _clean_text(soup.title.get_text(" ", strip=True))
+    if not title:
+        raise ValueError("Не удалось определить название вакансии на странице")
+
+    if not company:
+        site_name = soup.select_one('meta[property="og:site_name"]')
+        company = _clean_text(str(site_name.get("content") or "")) if site_name else ""
+    if not company:
+        company_candidate = _nested_text(
+            soup,
+            ('[itemprop="hiringOrganization"]', '[class*="company"]', '[class*="employer"]'),
+        )
+        company = (
+            company_candidate
+            if company_candidate
+            and len(company_candidate) <= 60
+            and len(company_candidate.split()) <= 5
+            else _company_from_url(source_url)
+        )
+    if not location:
+        location = _nested_text(
+            soup,
+            ('[itemprop="jobLocation"]', '[class*="location"]', '[class*="city"]'),
+        )
+        if location and len(location) > 80:
+            location = None
+    if not description:
+        description = _clean_text(soup.get_text(" ", strip=True))[:16000]
+    parsed = urlsplit(source_url)
+    source_site = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+    return Vacancy(
+        title=title[:240],
+        company=company[:240],
+        location=location[:240] if location else None,
+        url=source_url,
+        score=100,
+        reason="Добавлено вручную по ссылке",
+        source_site=source_site,
+        description=description[:16000] or None,
+    )
+
+
 def extract_vacancies(
     html: str, source_url: str, request: SearchRequest, *, source_site: str | None = None
 ) -> list[Vacancy]:
@@ -326,6 +415,17 @@ class SiteCrawlerProvider:
         vacancies = _deduplicate(vacancy for items, _ in results for vacancy in items)
         warnings = [warning for _, site_warnings in results for warning in site_warnings]
         return vacancies[: self.max_results], warnings
+
+    async def import_vacancy(self, url: str) -> Vacancy:
+        headers = {
+            "User-Agent": "JobCompass/0.2 (+local personal vacancy search)",
+            "Accept": "text/html,application/xhtml+xml",
+        }
+        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+            html, final_url, warning = await self._fetch_html(client, url)
+        if html is None:
+            raise ValueError(warning or "Не удалось загрузить страницу вакансии")
+        return extract_single_vacancy(html, final_url)
 
 
 def _deduplicate(vacancies: Iterable[Vacancy]) -> list[Vacancy]:
