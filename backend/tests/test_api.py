@@ -6,6 +6,7 @@ from app.main import (
     app,
     get_application_store,
     get_career_ops_provider,
+    get_compatibility_report_store,
     get_search_service,
     get_settings_store,
 )
@@ -120,6 +121,19 @@ class FakeCareerOpsProvider:
                 created_at="2026-10-31T08:00:00Z",
             )
         ]
+
+
+class FakeCompatibilityReportStore:
+    is_ready = True
+
+    def __init__(self) -> None:
+        self.reports = []
+
+    async def save_many(self, reports):  # noqa: ANN001
+        self.reports = reports
+
+    async def load(self):  # noqa: ANN201
+        return self.reports
 
 
 def test_search_endpoint() -> None:
@@ -243,7 +257,9 @@ def test_application_endpoints_round_trip() -> None:
 
 
 def test_compatibility_reports_endpoint() -> None:
+    store = FakeCompatibilityReportStore()
     app.dependency_overrides[get_career_ops_provider] = lambda: FakeCareerOpsProvider()
+    app.dependency_overrides[get_compatibility_report_store] = lambda: store
     client = TestClient(app)
 
     response = client.get("/api/career-ops/reports")

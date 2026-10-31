@@ -225,6 +225,7 @@ legend { margin-bottom: 11px; }
 .vacancy-badge.new { color: #3e5700; background: #eaf8c7; }
 .vacancy-badge.seen { color: #5f6863; background: #e9ece7; }
 .vacancy-badge.applied { color: #27536d; background: #dceff8; }
+.vacancy-badge.report-ready { color: #4d3d0b; background: #fff0bd; }
 .vacancy-body h3 { margin: 7px 0 8px; font-size: 21px; letter-spacing: -.02em; }
 .vacancy-body p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
 .vacancy-body a { color: #3e5600; font-weight: 700; text-underline-offset: 4px; }
@@ -232,6 +233,8 @@ legend { margin-bottom: 11px; }
 .vacancy-action-buttons { display: flex; align-items: center; gap: 8px; }
 .compatibility-button { width: auto; min-height: 36px; padding: 0 14px; border: 1px solid #cad0c4; border-radius: 9px; color: #354039; background: #fff; font-size: 12px; font-weight: 800; }
 .compatibility-button:hover:not(:disabled) { border-color: #96b536; background: #f6fbe9; }
+.compatibility-button.report-available { color: #344800; border-color: #a9c961; background: #eff9d7; }
+.compatibility-button.report-available:hover { border-color: #83a52f; background: #e5f6bd; }
 .application-button { width: auto; min-height: 36px; padding: 0 14px; border: 1px solid #9fc532; border-radius: 9px; color: #354700; background: #f1fbd9; font-size: 12px; font-weight: 800; }
 .application-button:hover:not(:disabled) { background: var(--lime); }
 .application-button.applied { cursor: default; border-color: #d4d9cf; color: #69726d; background: #f0f2ed; opacity: 1; }

@@ -130,7 +130,7 @@ function SingleSelect({ ariaLabel, className = '', value, options, open, disable
   )
 }
 
-function VacancyCard({ vacancy, applied, checking, onApply, onCheck }: { vacancy: Vacancy; applied: boolean; checking: boolean; onApply: (vacancy: Vacancy) => void; onCheck: (vacancy: Vacancy) => void }) {
+function VacancyCard({ vacancy, report, applied, checking, onApply, onCheck, onOpenReport }: { vacancy: Vacancy; report: CompatibilityReport | null; applied: boolean; checking: boolean; onApply: (vacancy: Vacancy) => void; onCheck: (vacancy: Vacancy) => void; onOpenReport: (report: CompatibilityReport) => void }) {
   return (
     <article className="vacancy-card">
       <div className="score" aria-label={`Совпадение ${vacancy.score} процентов`}>{vacancy.score}</div>
@@ -142,13 +142,16 @@ function VacancyCard({ vacancy, applied, checking, onApply, onCheck }: { vacancy
         <div className="vacancy-badges">
           {vacancy.seen_before ? <span className="vacancy-badge seen">Уже просмотрена</span> : <span className="vacancy-badge new">Новая</span>}
           {vacancy.applied || applied ? <span className="vacancy-badge applied">Вы откликнулись</span> : null}
+          {report ? <span className="vacancy-badge report-ready">Отчёт {report.result.score.toFixed(1)}/5</span> : null}
         </div>
         <h3>{vacancy.title}</h3>
         <p>{vacancy.reason}</p>
         <div className="vacancy-actions">
           <a href={vacancy.url} target="_blank" rel="noreferrer">Открыть вакансию <span aria-hidden="true">↗</span></a>
           <div className="vacancy-action-buttons">
-            <button type="button" className="compatibility-button" disabled={checking} onClick={() => onCheck(vacancy)}>{checking ? <><span className="spinner" /> Анализируем…</> : 'Проверить совместимость'}</button>
+            {report
+              ? <button type="button" className="compatibility-button report-available" onClick={() => onOpenReport(report)}>Посмотреть отчёт</button>
+              : <button type="button" className="compatibility-button" disabled={checking} onClick={() => onCheck(vacancy)}>{checking ? <><span className="spinner" /> Анализируем…</> : 'Проверить совместимость'}</button>}
             <button type="button" className={applied ? 'application-button applied' : 'application-button'} disabled={applied} onClick={() => onApply(vacancy)}>{applied ? 'Отклик добавлен ✓' : 'Я откликнулся'}</button>
           </div>
         </div>
@@ -157,7 +160,7 @@ function VacancyCard({ vacancy, applied, checking, onApply, onCheck }: { vacancy
   )
 }
 
-function Results({ result, applications, checkingUrl, onApply, onCheck }: { result: SearchResponse; applications: JobApplication[]; checkingUrl: string | null; onApply: (vacancy: Vacancy) => void; onCheck: (vacancy: Vacancy) => void }) {
+function Results({ result, reports, applications, checkingUrl, onApply, onCheck, onOpenReport }: { result: SearchResponse; reports: CompatibilityReport[]; applications: JobApplication[]; checkingUrl: string | null; onApply: (vacancy: Vacancy) => void; onCheck: (vacancy: Vacancy) => void; onOpenReport: (report: CompatibilityReport) => void }) {
   const [selectedCompany, setSelectedCompany] = useState('')
   const [companyFilterOpen, setCompanyFilterOpen] = useState(false)
   const companies = getVacancyCompanies(result.vacancies)
@@ -197,7 +200,7 @@ function Results({ result, applications, checkingUrl, onApply, onCheck }: { resu
       </div>
       {result.warnings.length > 0 ? <div className="warnings" role="status">{result.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div> : null}
       {visibleVacancies.length > 0 ? (
-        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} applied={applications.some((application) => application.vacancyUrl === vacancy.url)} checking={checkingUrl === vacancy.url} onApply={onApply} onCheck={onCheck} />)}</div>
+        <div className="vacancy-list">{visibleVacancies.map((vacancy) => <VacancyCard key={vacancy.url} vacancy={vacancy} report={reports.find((report) => report.vacancy.url === vacancy.url) ?? null} applied={applications.some((application) => application.vacancyUrl === vacancy.url)} checking={checkingUrl === vacancy.url} onApply={onApply} onCheck={onCheck} onOpenReport={onOpenReport} />)}</div>
       ) : (
         <div className="empty-state">
           <h3>{result.vacancies.length > 0 ? 'У этой компании вакансий не найдено' : 'Подходящих вакансий пока нет'}</h3>
@@ -534,6 +537,14 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
   const [checkingUrl, setCheckingUrl] = useState<string | null>(null)
   const [compatibilityCache, setCompatibilityCache] = useState<Record<string, CompatibilityResult>>({})
   const [compatibilityMode, setCompatibilityMode] = useState<'quick' | 'full'>('quick')
+  const [compatibilityDocument, setCompatibilityDocument] = useState<string | null>(null)
+  const [reports, setReports] = useState<CompatibilityReport[]>([])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void getCompatibilityReports(controller.signal).then(setReports).catch(() => undefined)
+    return () => controller.abort()
+  }, [])
 
   function toggleSelection(ids: string[], id: string): string[] {
     return ids.includes(id) ? ids.filter((itemId) => itemId !== id) : [...ids, id]
@@ -565,6 +576,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     setCompatibilityVacancy(vacancy)
     setCompatibilityMode(mode)
     setCompatibilityError(null)
+    setCompatibilityDocument(null)
     const cacheKey = `${mode}:${vacancy.url}`
     const cached = compatibilityCache[cacheKey]
     if (cached) {
@@ -577,11 +589,21 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
       const checked = await checkCompatibility(vacancy, settings.roles.map((role) => role.title), mode)
       setCompatibilityResult(checked)
       setCompatibilityCache((current) => ({ ...current, [cacheKey]: checked }))
+      const controller = new AbortController()
+      void getCompatibilityReports(controller.signal).then(setReports).catch(() => undefined)
     } catch (requestError) {
       setCompatibilityError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить анализ.')
     } finally {
       setCheckingUrl(null)
     }
+  }
+
+  function openSavedReport(report: CompatibilityReport) {
+    setCompatibilityVacancy(report.vacancy)
+    setCompatibilityMode(report.mode)
+    setCompatibilityResult(report.result)
+    setCompatibilityDocument(report.content)
+    setCompatibilityError(null)
   }
 
   const hasSettings = settings.sites.length > 0 && settings.roles.length > 0
@@ -606,8 +628,8 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
           </form>
         </section>
       )}
-      {result ? <Results result={result} applications={applications} checkingUrl={checkingUrl} onApply={onApply} onCheck={handleCompatibility} /> : null}
-      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} result={compatibilityResult} mode={compatibilityMode} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} onRunFull={() => void handleCompatibility(compatibilityVacancy, 'full')} /> : null}
+      {result ? <Results result={result} reports={reports} applications={applications} checkingUrl={checkingUrl} onApply={onApply} onCheck={handleCompatibility} onOpenReport={openSavedReport} /> : null}
+      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} result={compatibilityResult} mode={compatibilityMode} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} document={compatibilityDocument} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} onRunFull={() => void handleCompatibility(compatibilityVacancy, 'full')} /> : null}
     </div>
   )
 }

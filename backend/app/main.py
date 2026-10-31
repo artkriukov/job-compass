@@ -21,6 +21,10 @@ from app.models import (
 from app.services.ai_job_search import AiJobSearchError
 from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
 from app.services.career_ops import CareerOpsError, CareerOpsProvider
+from app.services.compatibility_report_store import (
+    CompatibilityReportStorageError,
+    SupabaseCompatibilityReportStore,
+)
 from app.services.resume_store import (
     MAX_RESUME_BYTES,
     ResumeStorageError,
@@ -81,6 +85,18 @@ def get_career_ops_provider(settings: SettingsDependency) -> CareerOpsProvider:
 CareerOpsDependency = Annotated[CareerOpsProvider, Depends(get_career_ops_provider)]
 
 
+def get_compatibility_report_store(
+    settings: SettingsDependency,
+) -> SupabaseCompatibilityReportStore:
+    return SupabaseCompatibilityReportStore(settings.supabase_url)
+
+
+CompatibilityReportStoreDependency = Annotated[
+    SupabaseCompatibilityReportStore,
+    Depends(get_compatibility_report_store),
+]
+
+
 def get_resume_store(settings: SettingsDependency) -> ResumeStore:
     return ResumeStore(settings.career_ops_data_dir)
 
@@ -128,22 +144,46 @@ async def upload_resume(
 
 @app.post("/api/career-ops/compatibility", response_model=CompatibilityResult)
 async def check_compatibility(
-    payload: CompatibilityRequest, career_ops: CareerOpsDependency
+    payload: CompatibilityRequest,
+    career_ops: CareerOpsDependency,
+    report_store: CompatibilityReportStoreDependency,
 ) -> CompatibilityResult:
     try:
-        return career_ops.evaluate(payload)
+        result = career_ops.evaluate(payload)
     except CareerOpsError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if report_store.is_ready:
+        try:
+            report = next((
+                item
+                for item in career_ops.list_reports()
+                if str(item.vacancy.url) == str(payload.vacancy.url)
+                and item.mode == payload.mode
+                and item.result == result
+            ), None)
+            if report:
+                await report_store.save(report)
+        except (CareerOpsError, CompatibilityReportStorageError):
+            pass
+    return result
 
 
 @app.get("/api/career-ops/reports", response_model=list[CompatibilityReport])
 async def read_compatibility_reports(
     career_ops: CareerOpsDependency,
+    report_store: CompatibilityReportStoreDependency,
 ) -> list[CompatibilityReport]:
     try:
-        return career_ops.list_reports()
+        local_reports = career_ops.list_reports()
     except CareerOpsError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not report_store.is_ready:
+        return local_reports
+    try:
+        await report_store.save_many(local_reports)
+        return await report_store.load()
+    except CompatibilityReportStorageError:
+        return local_reports
 
 
 @app.post("/api/search", response_model=SearchResponse)
