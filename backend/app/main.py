@@ -17,6 +17,8 @@ from app.models import (
     SearchRequest,
     SearchResponse,
     SearchSettingsSnapshot,
+    TailoredResume,
+    TailoredResumeRequest,
 )
 from app.services.ai_job_search import AiJobSearchError
 from app.services.application_store import ApplicationStorageError, SupabaseApplicationStore
@@ -184,6 +186,38 @@ async def read_compatibility_reports(
         return await report_store.load()
     except CompatibilityReportStorageError:
         return local_reports
+
+
+@app.post("/api/career-ops/tailored-resume", response_model=TailoredResume)
+async def create_tailored_resume(
+    payload: TailoredResumeRequest,
+    career_ops: CareerOpsDependency,
+    report_store: CompatibilityReportStoreDependency,
+) -> TailoredResume:
+    if report_store.is_ready:
+        try:
+            existing = await report_store.load_tailored_resume(payload.report_id)
+            if existing:
+                return existing
+        except CompatibilityReportStorageError:
+            pass
+    try:
+        reports = await report_store.load() if report_store.is_ready else career_ops.list_reports()
+    except CompatibilityReportStorageError:
+        reports = career_ops.list_reports()
+    report = next((item for item in reports if item.id == payload.report_id), None)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Отчёт для адаптации резюме не найден")
+    try:
+        result = career_ops.tailor_resume(report)
+    except CareerOpsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if report_store.is_ready:
+        try:
+            await report_store.save_tailored_resume(result)
+        except CompatibilityReportStorageError:
+            pass
+    return result
 
 
 @app.post("/api/search", response_model=SearchResponse)

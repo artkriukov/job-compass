@@ -111,6 +111,25 @@ class CompatibilityReport(BaseModel):
     content: str | None = None
 
 
+class TailoredResumeBlock(BaseModel):
+    title: Annotated[str, Field(min_length=1, max_length=160)]
+    content: Annotated[str, Field(min_length=1, max_length=6000)]
+
+
+class TailoredResumeDraft(BaseModel):
+    blocks: Annotated[list[TailoredResumeBlock], Field(min_length=1, max_length=12)]
+
+
+class TailoredResume(TailoredResumeDraft):
+    id: str
+    report_id: str
+    created_at: datetime
+
+
+class TailoredResumeRequest(BaseModel):
+    report_id: Annotated[str, Field(min_length=1, max_length=300)]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]

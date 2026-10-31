@@ -3,7 +3,7 @@ import asyncio
 import psycopg
 from psycopg.types.json import Jsonb
 
-from app.models import CompatibilityReport
+from app.models import CompatibilityReport, TailoredResume
 
 
 class CompatibilityReportStorageError(RuntimeError):
@@ -118,3 +118,52 @@ class SupabaseCompatibilityReportStore:
 
     async def save(self, report: CompatibilityReport) -> None:
         await self.save_many([report])
+
+    def _load_tailored_resume(self, report_id: str) -> TailoredResume | None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    "select id, report_id, blocks, created_at "
+                    "from public.tailored_resumes where report_id = %s",
+                    (report_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                return TailoredResume.model_validate({
+                    "id": row[0],
+                    "report_id": row[1],
+                    "blocks": row[2],
+                    "created_at": row[3],
+                })
+        except psycopg.Error as exc:
+            raise CompatibilityReportStorageError(
+                "Не удалось прочитать адаптированное резюме из Supabase"
+            ) from exc
+
+    async def load_tailored_resume(self, report_id: str) -> TailoredResume | None:
+        return await asyncio.to_thread(self._load_tailored_resume, report_id)
+
+    def _save_tailored_resume(self, resume: TailoredResume) -> None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    "insert into public.tailored_resumes "
+                    "(id, report_id, blocks, created_at) values (%s, %s, %s, %s) "
+                    "on conflict (report_id) do update set id = excluded.id, "
+                    "blocks = excluded.blocks, created_at = excluded.created_at, "
+                    "updated_at = now()",
+                    (
+                        resume.id,
+                        resume.report_id,
+                        Jsonb([block.model_dump(mode="json") for block in resume.blocks]),
+                        resume.created_at,
+                    ),
+                )
+        except psycopg.Error as exc:
+            raise CompatibilityReportStorageError(
+                "Не удалось сохранить адаптированное резюме в Supabase"
+            ) from exc
+
+    async def save_tailored_resume(self, resume: TailoredResume) -> None:
+        await asyncio.to_thread(self._save_tailored_resume, resume)

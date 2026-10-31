@@ -1,4 +1,4 @@
-import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse } from './types'
+import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse, TailoredResume } from './types'
 import type { SearchSettings } from './search-settings'
 import type { JobApplication } from './applications'
 import type { Vacancy } from './types'
@@ -175,5 +175,18 @@ export async function getCompatibilityReports(
   const response = await fetch('/api/career-ops/reports', { signal })
   if (!response.ok) throw new Error(`Не удалось загрузить отчёты: ${response.status}`)
   return response.json() as Promise<CompatibilityReport[]>
+}
+
+export async function createTailoredResume(reportId: string): Promise<TailoredResume> {
+  const response = await fetch('/api/career-ops/tailored-resume', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_id: reportId }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Не удалось адаптировать резюме: ${response.status}`)
+  }
+  return response.json() as Promise<TailoredResume>
 }
 

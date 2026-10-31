@@ -55,3 +55,15 @@ export type CompatibilityReport = {
   content: string | null
 }
 
+export type TailoredResumeBlock = {
+  title: string
+  content: string
+}
+
+export type TailoredResume = {
+  id: string
+  report_id: string
+  blocks: TailoredResumeBlock[]
+  created_at: string
+}
+

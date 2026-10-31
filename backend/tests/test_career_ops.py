@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.models import CompatibilityRequest, Vacancy
+from app.models import CompatibilityReport, CompatibilityRequest, CompatibilityResult, Vacancy
 from app.services.career_ops import CareerOpsProvider
 
 
@@ -324,3 +324,68 @@ def test_quick_evaluation_can_use_groq(
     result = provider._evaluate_quick_with_groq("prompt")
 
     assert result.decision == "consider"
+
+
+def test_tailor_resume_uses_confirmed_facts_and_local_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    documents = tmp_path / "user-data/documents"
+    documents.mkdir(parents=True)
+    (documents / "resume-one.txt").write_text("Python, SQL and support experience")
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+    codex_calls = 0
+    report = CompatibilityReport(
+        id="report-1",
+        vacancy=make_request().vacancy,
+        mode="quick",
+        result=CompatibilityResult(
+            score=4.0,
+            decision="apply",
+            summary="Хорошее совпадение",
+        ),
+        created_at="2026-10-31T08:00:00Z",
+        content="Backend vacancy requires Python and SQL.",
+    )
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        nonlocal codex_calls
+        codex_calls += 1
+        assert command[command.index("--model") + 1] == "gpt-6-luna"
+        assert "запрещено придумывать" in kwargs["input"]
+        assert "Python, SQL and support experience" in kwargs["input"]
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text(json.dumps({
+            "blocks": [
+                {"title": "Целевая позиция", "content": "Example — Backend developer"},
+                {"title": "Обо мне", "content": "Работаю с Python и SQL."},
+            ]
+        }))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.services.career_ops.subprocess.run", fake_run)
+
+    first = provider.tailor_resume(report)
+    second = provider.tailor_resume(report)
+
+    assert first == second
+    assert first.report_id == "report-1"
+    assert first.blocks[1].title == "Обо мне"
+    assert codex_calls == 1
+
+
+def test_tailor_resume_requires_uploaded_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+    report = CompatibilityReport(
+        id="report-1",
+        vacancy=make_request().vacancy,
+        mode="quick",
+        result=CompatibilityResult(score=3.0, decision="research", summary="Проверить"),
+        created_at="2026-10-31T08:00:00Z",
+    )
+
+    with pytest.raises(RuntimeError, match="Сначала загрузите резюме"):
+        provider.tailor_resume(report)

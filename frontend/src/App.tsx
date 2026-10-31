@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import {
   createRemoteApplication,
+  createTailoredResume,
   checkCompatibility,
   deleteRemoteApplication,
   getCompatibilityReports,
@@ -39,7 +40,7 @@ import {
   type SavedRole,
   type SearchSettings,
 } from './search-settings'
-import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse, Vacancy } from './types'
+import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse, TailoredResume, Vacancy } from './types'
 import { compatibilityPlainText } from './compatibility'
 import './styles.css'
 
@@ -215,7 +216,39 @@ const DECISION_LABELS: Record<CompatibilityResult['decision'], string> = {
   apply: 'Откликаться', consider: 'Рассмотреть', research: 'Сначала изучить', skip: 'Пропустить',
 }
 
-function CompatibilityDialog({ vacancy, result, mode, loading, error, document, onClose, onOpenResume, onRunFull }: { vacancy: Vacancy; result: CompatibilityResult | null; mode: 'quick' | 'full'; loading: boolean; error: string | null; document?: string | null; onClose: () => void; onOpenResume?: () => void; onRunFull?: () => void }) {
+function CompatibilityDialog({ vacancy, report, result, mode, loading, error, document, onClose, onOpenResume, onRunFull }: { vacancy: Vacancy; report?: CompatibilityReport | null; result: CompatibilityResult | null; mode: 'quick' | 'full'; loading: boolean; error: string | null; document?: string | null; onClose: () => void; onOpenResume?: () => void; onRunFull?: () => void }) {
+  const [tailoredResume, setTailoredResume] = useState<TailoredResume | null>(null)
+  const [tailoring, setTailoring] = useState(false)
+  const [tailoringError, setTailoringError] = useState<string | null>(null)
+  const [copiedBlock, setCopiedBlock] = useState<string | null>(null)
+
+  async function handleTailorResume() {
+    if (!report) return
+    setTailoring(true)
+    setTailoringError(null)
+    try {
+      setTailoredResume(await createTailoredResume(report.id))
+    } catch (requestError) {
+      setTailoringError(requestError instanceof Error ? requestError.message : 'Не удалось адаптировать резюме.')
+    } finally {
+      setTailoring(false)
+    }
+  }
+
+  async function copyBlock(key: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedBlock(key)
+      window.setTimeout(() => setCopiedBlock((current) => current === key ? null : current), 1800)
+    } catch {
+      setTailoringError('Браузер не разрешил копирование. Выделите текст вручную.')
+    }
+  }
+
+  const fullResumeText = tailoredResume?.blocks
+    .map((block) => `${block.title}\n${block.content}`)
+    .join('\n\n') ?? ''
+
   return <div className="compatibility-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="compatibility-dialog" role="dialog" aria-modal="true" aria-labelledby="compatibility-title" onMouseDown={(event) => event.stopPropagation()}>
       <button type="button" className="dialog-close" aria-label="Закрыть" onClick={onClose}>×</button>
@@ -227,6 +260,8 @@ function CompatibilityDialog({ vacancy, result, mode, loading, error, document, 
       {result ? <div className="compatibility-content">
         <div className={`compatibility-score decision-${result.decision}`}><strong>{result.score.toFixed(1)}</strong><span>из 5</span><b>{DECISION_LABELS[result.decision]}</b></div>
         <p className="compatibility-summary">{compatibilityPlainText(result.summary)}</p>
+        {report ? <section className="report-materials"><div><h3>Материалы для отклика</h3><p>Создадим отдельную версию резюме под эту вакансию. Исходный файл не изменится.</p></div><button type="button" className="primary-button" disabled={tailoring || Boolean(tailoredResume)} onClick={() => void handleTailorResume()}>{tailoring ? <><span className="spinner" /> Адаптируем…</> : tailoredResume ? 'Адаптация готова ✓' : 'Адаптировать резюме'}</button>{tailoringError ? <p className="material-error" role="alert">{tailoringError}</p> : null}</section> : null}
+        {tailoredResume ? <section className="tailored-resume"><div className="tailored-resume-heading"><div><p className="eyebrow">Версия под вакансию</p><h3>Адаптированное резюме</h3></div><button type="button" className="copy-button" onClick={() => void copyBlock('all', fullResumeText)}>{copiedBlock === 'all' ? 'Скопировано ✓' : 'Скопировать всё'}</button></div><div className="tailored-resume-blocks">{tailoredResume.blocks.map((block, index) => { const key = `${index}-${block.title}`; return <article key={key}><header><h4>{block.title}</h4><button type="button" className="copy-button" onClick={() => void copyBlock(key, block.content)}>{copiedBlock === key ? 'Скопировано ✓' : 'Копировать'}</button></header><pre>{block.content}</pre></article> })}</div></section> : null}
         {result.strengths.length ? <section><h3>Сильные стороны</h3><ul>{result.strengths.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
         {result.gaps.length ? <section><h3>Пробелы и как их закрыть</h3><div className="compatibility-gaps">{result.gaps.map((gap) => <article key={`${gap.requirement}-${gap.match}`}><div><strong>{compatibilityPlainText(gap.requirement)}</strong><span className={`gap-match ${gap.match}`}>{gap.match === 'missing' ? 'Нет в резюме' : gap.match === 'partial' ? 'Частично' : gap.match === 'strong' ? 'Сильное совпадение' : 'Не применимо'}</span></div><p>{compatibilityPlainText(gap.evidence)}</p><small>{compatibilityPlainText(gap.recommendation)}</small></article>)}</div></section> : null}
         {result.improvements.length ? <section><h3>Что улучшить в резюме</h3><ol>{result.improvements.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ol></section> : null}
@@ -538,6 +573,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
   const [compatibilityCache, setCompatibilityCache] = useState<Record<string, CompatibilityResult>>({})
   const [compatibilityMode, setCompatibilityMode] = useState<'quick' | 'full'>('quick')
   const [compatibilityDocument, setCompatibilityDocument] = useState<string | null>(null)
+  const [compatibilitySourceReport, setCompatibilitySourceReport] = useState<CompatibilityReport | null>(null)
   const [reports, setReports] = useState<CompatibilityReport[]>([])
 
   useEffect(() => {
@@ -577,6 +613,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     setCompatibilityMode(mode)
     setCompatibilityError(null)
     setCompatibilityDocument(null)
+    setCompatibilitySourceReport(null)
     const cacheKey = `${mode}:${vacancy.url}`
     const cached = compatibilityCache[cacheKey]
     if (cached) {
@@ -603,6 +640,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     setCompatibilityMode(report.mode)
     setCompatibilityResult(report.result)
     setCompatibilityDocument(report.content)
+    setCompatibilitySourceReport(report)
     setCompatibilityError(null)
   }
 
@@ -629,7 +667,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
         </section>
       )}
       {result ? <Results result={result} reports={reports} applications={applications} checkingUrl={checkingUrl} onApply={onApply} onCheck={handleCompatibility} onOpenReport={openSavedReport} /> : null}
-      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} result={compatibilityResult} mode={compatibilityMode} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} document={compatibilityDocument} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} onRunFull={() => void handleCompatibility(compatibilityVacancy, 'full')} /> : null}
+      {compatibilityVacancy ? <CompatibilityDialog vacancy={compatibilityVacancy} report={compatibilitySourceReport} result={compatibilityResult} mode={compatibilityMode} loading={checkingUrl === compatibilityVacancy.url} error={compatibilityError} document={compatibilityDocument} onClose={() => setCompatibilityVacancy(null)} onOpenResume={() => { setCompatibilityVacancy(null); onOpenResume() }} onRunFull={() => void handleCompatibility(compatibilityVacancy, 'full')} /> : null}
     </div>
   )
 }
@@ -762,7 +800,7 @@ function ReportsPage({ onOpenSearch }: { onOpenSearch: () => void }) {
           </div>
         </section>
       ) : null}
-      {selectedReport ? <CompatibilityDialog vacancy={selectedReport.vacancy} result={selectedReport.result} mode={selectedReport.mode} loading={false} error={null} document={selectedReport.content} onClose={() => setSelectedReport(null)} /> : null}
+      {selectedReport ? <CompatibilityDialog vacancy={selectedReport.vacancy} report={selectedReport} result={selectedReport.result} mode={selectedReport.mode} loading={false} error={null} document={selectedReport.content} onClose={() => setSelectedReport(null)} /> : null}
     </div>
   )
 }

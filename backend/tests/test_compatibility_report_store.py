@@ -3,16 +3,28 @@ from datetime import UTC, datetime
 import psycopg
 import pytest
 
-from app.models import CompatibilityReport, CompatibilityResult, Vacancy
+from app.models import (
+    CompatibilityReport,
+    CompatibilityResult,
+    TailoredResume,
+    Vacancy,
+)
 from app.services.compatibility_report_store import (
     CompatibilityReportStorageError,
     SupabaseCompatibilityReportStore,
 )
 
+DEFAULT_ROW = object()
+
 
 class FakeCursor:
-    def __init__(self, rows: list[tuple] | None = None) -> None:
+    def __init__(
+        self,
+        rows: list[tuple] | None = None,
+        one: tuple | None | object = DEFAULT_ROW,
+    ) -> None:
         self.rows = rows or []
+        self.one = one
         self.queries: list[tuple[str, tuple | None]] = []
 
     def __enter__(self):  # noqa: ANN204
@@ -27,8 +39,10 @@ class FakeCursor:
     def fetchall(self) -> list[tuple]:
         return self.rows
 
-    def fetchone(self) -> tuple[str]:
-        return ("9bca2aaf-f083-469f-ac20-4a6fa1d443ea",)
+    def fetchone(self) -> tuple | None:
+        if self.one is DEFAULT_ROW:
+            return ("9bca2aaf-f083-469f-ac20-4a6fa1d443ea",)
+        return self.one  # type: ignore[return-value]
 
 
 class FakeConnection:
@@ -67,6 +81,18 @@ def make_report() -> CompatibilityReport:
             summary="Хорошее совпадение",
         ),
         created_at=datetime(2026, 10, 31, 8, tzinfo=UTC),
+    )
+
+
+def make_tailored_resume() -> TailoredResume:
+    return TailoredResume(
+        id="tailored-1",
+        report_id="report-1",
+        blocks=[
+            {"title": "Целевая позиция", "content": "Example — Backend developer"},
+            {"title": "Обо мне", "content": "Работаю с Python и SQL."},
+        ],
+        created_at=datetime(2026, 10, 31, 9, tzinfo=UTC),
     )
 
 
@@ -109,6 +135,57 @@ async def test_report_store_saves_reports(monkeypatch: pytest.MonkeyPatch) -> No
     assert len(cursor.queries) == 2
     assert "insert into public.vacancies" in cursor.queries[0][0]
     assert "insert into public.compatibility_reports" in cursor.queries[1][0]
+
+
+@pytest.mark.asyncio
+async def test_report_store_round_trips_tailored_resume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resume = make_tailored_resume()
+    row = (
+        resume.id,
+        resume.report_id,
+        [block.model_dump(mode="json") for block in resume.blocks],
+        resume.created_at,
+    )
+    load_cursor = FakeCursor(one=row)
+    store = SupabaseCompatibilityReportStore("postgresql://example")
+    monkeypatch.setattr(store, "_connect", lambda: FakeConnection(load_cursor))
+
+    loaded = await store.load_tailored_resume("report-1")
+
+    assert loaded == resume
+    save_cursor = FakeCursor()
+    monkeypatch.setattr(store, "_connect", lambda: FakeConnection(save_cursor))
+    await store.save_tailored_resume(resume)
+    assert "insert into public.tailored_resumes" in save_cursor.queries[0][0]
+
+
+@pytest.mark.asyncio
+async def test_report_store_returns_none_for_missing_tailored_resume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cursor = FakeCursor(one=None)
+    store = SupabaseCompatibilityReportStore("postgresql://example")
+    monkeypatch.setattr(store, "_connect", lambda: FakeConnection(cursor))
+
+    assert await store.load_tailored_resume("missing") is None
+
+
+def test_report_store_wraps_tailored_resume_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SupabaseCompatibilityReportStore("postgresql://example")
+    monkeypatch.setattr(
+        store,
+        "_connect",
+        lambda: (_ for _ in ()).throw(psycopg.OperationalError()),
+    )
+
+    with pytest.raises(CompatibilityReportStorageError, match="прочитать адаптированное"):
+        store._load_tailored_resume("report-1")
+    with pytest.raises(CompatibilityReportStorageError, match="сохранить адаптированное"):
+        store._save_tailored_resume(make_tailored_resume())
 
 
 def test_report_store_without_dsn_is_not_ready() -> None:

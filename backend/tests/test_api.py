@@ -16,6 +16,7 @@ from app.models import (
     JobApplication,
     SearchResponse,
     SearchSettingsSnapshot,
+    TailoredResume,
     Vacancy,
 )
 from app.services.application_store import ApplicationStorageError
@@ -122,18 +123,33 @@ class FakeCareerOpsProvider:
             )
         ]
 
+    def tailor_resume(self, report):  # noqa: ANN001, ANN201
+        return TailoredResume(
+            id="tailored-1",
+            report_id=report.id,
+            blocks=[{"title": "Обо мне", "content": "Работаю с Python."}],
+            created_at="2026-10-31T09:00:00Z",
+        )
+
 
 class FakeCompatibilityReportStore:
     is_ready = True
 
     def __init__(self) -> None:
         self.reports = []
+        self.tailored_resume = None
 
     async def save_many(self, reports):  # noqa: ANN001
         self.reports = reports
 
     async def load(self):  # noqa: ANN201
         return self.reports
+
+    async def load_tailored_resume(self, _report_id):  # noqa: ANN001, ANN201
+        return self.tailored_resume
+
+    async def save_tailored_resume(self, resume):  # noqa: ANN001
+        self.tailored_resume = resume
 
 
 def test_search_endpoint() -> None:
@@ -268,4 +284,27 @@ def test_compatibility_reports_endpoint() -> None:
     assert response.status_code == 200
     assert response.json()[0]["vacancy"]["title"] == "Support engineer"
     assert response.json()[0]["result"]["score"] == 4.1
+
+
+def test_tailored_resume_endpoint_generates_and_reuses_result() -> None:
+    store = FakeCompatibilityReportStore()
+    provider = FakeCareerOpsProvider()
+    store.reports = provider.list_reports()
+    app.dependency_overrides[get_career_ops_provider] = lambda: provider
+    app.dependency_overrides[get_compatibility_report_store] = lambda: store
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/career-ops/tailored-resume",
+        json={"report_id": "report-1"},
+    )
+    reused = client.post(
+        "/api/career-ops/tailored-resume",
+        json={"report_id": "report-1"},
+    )
+
+    app.dependency_overrides.clear()
+    assert created.status_code == 200
+    assert created.json()["blocks"][0]["title"] == "Обо мне"
+    assert reused.json() == created.json()
 
