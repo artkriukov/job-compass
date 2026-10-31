@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import {
   createRemoteApplication,
@@ -221,9 +221,20 @@ function CompatibilityDialog({ vacancy, report, result, mode, loading, error, do
   const [tailoring, setTailoring] = useState(false)
   const [tailoringError, setTailoringError] = useState<string | null>(null)
   const [copiedBlock, setCopiedBlock] = useState<string | null>(null)
+  const tailoredResumeRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (tailoredResume) {
+      tailoredResumeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [tailoredResume])
 
   async function handleTailorResume() {
     if (!report) return
+    if (tailoredResume) {
+      tailoredResumeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
     setTailoring(true)
     setTailoringError(null)
     try {
@@ -260,8 +271,8 @@ function CompatibilityDialog({ vacancy, report, result, mode, loading, error, do
       {result ? <div className="compatibility-content">
         <div className={`compatibility-score decision-${result.decision}`}><strong>{result.score.toFixed(1)}</strong><span>из 5</span><b>{DECISION_LABELS[result.decision]}</b></div>
         <p className="compatibility-summary">{compatibilityPlainText(result.summary)}</p>
-        {report ? <section className="report-materials"><div><h3>Материалы для отклика</h3><p>Создадим отдельную версию резюме под эту вакансию. Исходный файл не изменится.</p></div><button type="button" className="primary-button" disabled={tailoring || Boolean(tailoredResume)} onClick={() => void handleTailorResume()}>{tailoring ? <><span className="spinner" /> Адаптируем…</> : tailoredResume ? 'Адаптация готова ✓' : 'Адаптировать резюме'}</button>{tailoringError ? <p className="material-error" role="alert">{tailoringError}</p> : null}</section> : null}
-        {tailoredResume ? <section className="tailored-resume"><div className="tailored-resume-heading"><div><p className="eyebrow">Версия под вакансию</p><h3>Адаптированное резюме</h3></div><button type="button" className="copy-button" onClick={() => void copyBlock('all', fullResumeText)}>{copiedBlock === 'all' ? 'Скопировано ✓' : 'Скопировать всё'}</button></div><div className="tailored-resume-blocks">{tailoredResume.blocks.map((block, index) => { const key = `${index}-${block.title}`; return <article key={key}><header><h4>{block.title}</h4><button type="button" className="copy-button" onClick={() => void copyBlock(key, block.content)}>{copiedBlock === key ? 'Скопировано ✓' : 'Копировать'}</button></header><pre>{block.content}</pre></article> })}</div></section> : null}
+        {report ? <section className="report-materials"><div><h3>Материалы для отклика</h3><p>Создадим отдельную версию резюме под эту вакансию. Исходный файл не изменится.</p></div><button type="button" className="primary-button" disabled={tailoring} onClick={() => void handleTailorResume()}>{tailoring ? <><span className="spinner" /> Адаптируем…</> : tailoredResume ? 'Перейти к адаптации ↓' : 'Адаптировать резюме'}</button>{tailoringError ? <p className="material-error" role="alert">{tailoringError}</p> : null}</section> : null}
+        {tailoredResume ? <section className="tailored-resume" ref={tailoredResumeRef}><div className="tailored-resume-heading"><div><p className="eyebrow">Версия под вакансию</p><h3>Адаптированное резюме</h3></div><button type="button" className="copy-button" onClick={() => void copyBlock('all', fullResumeText)}>{copiedBlock === 'all' ? 'Скопировано ✓' : 'Скопировать всё'}</button></div><div className="tailored-resume-blocks">{tailoredResume.blocks.map((block, index) => { const key = `${index}-${block.title}`; return <article key={key}><header><h4>{block.title}</h4><button type="button" className="copy-button" onClick={() => void copyBlock(key, block.content)}>{copiedBlock === key ? 'Скопировано ✓' : 'Копировать'}</button></header><pre>{block.content}</pre></article> })}</div></section> : null}
         {result.strengths.length ? <section><h3>Сильные стороны</h3><ul>{result.strengths.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
         {result.gaps.length ? <section><h3>Пробелы и как их закрыть</h3><div className="compatibility-gaps">{result.gaps.map((gap) => <article key={`${gap.requirement}-${gap.match}`}><div><strong>{compatibilityPlainText(gap.requirement)}</strong><span className={`gap-match ${gap.match}`}>{gap.match === 'missing' ? 'Нет в резюме' : gap.match === 'partial' ? 'Частично' : gap.match === 'strong' ? 'Сильное совпадение' : 'Не применимо'}</span></div><p>{compatibilityPlainText(gap.evidence)}</p><small>{compatibilityPlainText(gap.recommendation)}</small></article>)}</div></section> : null}
         {result.improvements.length ? <section><h3>Что улучшить в резюме</h3><ol>{result.improvements.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ol></section> : null}
