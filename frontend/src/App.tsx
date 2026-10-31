@@ -763,18 +763,29 @@ function ReportsPage({ onOpenSearch }: { onOpenSearch: () => void }) {
   const [selectedReport, setSelectedReport] = useState<CompatibilityReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
+    let active = true
+    setLoading(true)
+    setError(null)
     void getCompatibilityReports(controller.signal)
-      .then(setReports)
+      .then((loadedReports) => {
+        if (active) setReports(loadedReports)
+      })
       .catch((requestError) => {
-        if (requestError instanceof DOMException && requestError.name === 'AbortError') return
+        if (!active || requestError instanceof DOMException && requestError.name === 'AbortError') return
         setError(requestError instanceof Error ? requestError.message : 'Не удалось загрузить отчёты.')
       })
-      .finally(() => setLoading(false))
-    return () => controller.abort()
-  }, [])
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [reloadKey])
 
   return (
     <div className="page-content">
@@ -784,7 +795,7 @@ function ReportsPage({ onOpenSearch }: { onOpenSearch: () => void }) {
         <p className="lede">Все проведённые проверки совместимости сохраняются локально и доступны без повторного анализа.</p>
       </section>
 
-      {error ? <p className="error" role="alert">{error}</p> : null}
+      {error ? <div className="reports-error" role="alert"><p>{error}</p><button type="button" className="report-open-button" onClick={() => setReloadKey((current) => current + 1)}>Повторить загрузку</button></div> : null}
       {loading ? <p className="reports-loading">Загружаем сохранённые отчёты…</p> : null}
       {!loading && !error && reports.length === 0 ? (
         <section className="applications-empty">

@@ -331,6 +331,8 @@ legend { margin-bottom: 11px; }
 .storage-note { margin: 18px 0 0; color: #8b948e; font-size: 11px; text-align: right; }
 
 .reports-loading { padding: 28px; border: 1px solid var(--line); border-radius: 16px; color: var(--muted); background: var(--paper); }
+.reports-error { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border: 1px solid #efcfc7; border-radius: 14px; color: #71382d; background: #fff0ec; }
+.reports-error p { margin: 0; }
 .reports-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: 0 20px 55px #27352d0b; }
 .reports-table-scroll { overflow-x: auto; }
 .reports-table { width: 100%; min-width: 720px; border-collapse: collapse; text-align: left; }

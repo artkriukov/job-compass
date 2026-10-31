@@ -182,8 +182,13 @@ async def read_compatibility_reports(
     if not report_store.is_ready:
         return local_reports
     try:
-        await report_store.save_many(local_reports)
-        return await report_store.load()
+        remote_reports = await report_store.load()
+        remote_ids = {report.id for report in remote_reports}
+        missing_reports = [report for report in local_reports if report.id not in remote_ids]
+        if missing_reports:
+            await report_store.save_many(missing_reports)
+        merged = [*remote_reports, *missing_reports]
+        return sorted(merged, key=lambda report: report.created_at, reverse=True)
     except CompatibilityReportStorageError:
         return local_reports
 
