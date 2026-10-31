@@ -1,4 +1,4 @@
-import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse, TailoredResume } from './types'
+import type { CompatibilityReport, CompatibilityResult, CoverLetter, ResumeSnapshot, SearchResponse, TailoredResume } from './types'
 import type { SearchSettings } from './search-settings'
 import type { JobApplication } from './applications'
 import type { Vacancy } from './types'
@@ -188,5 +188,31 @@ export async function createTailoredResume(reportId: string): Promise<TailoredRe
     throw new Error(body?.detail ?? `Не удалось адаптировать резюме: ${response.status}`)
   }
   return response.json() as Promise<TailoredResume>
+}
+
+export async function createCoverLetter(reportId: string): Promise<CoverLetter> {
+  const response = await fetch('/api/career-ops/cover-letter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_id: reportId }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Не удалось написать сопроводительное письмо: ${response.status}`)
+  }
+  return response.json() as Promise<CoverLetter>
+}
+
+export async function updateCoverLetter(reportId: string, content: string): Promise<CoverLetter> {
+  const response = await fetch(`/api/career-ops/cover-letter/${encodeURIComponent(reportId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Не удалось сохранить сопроводительное письмо: ${response.status}`)
+  }
+  return response.json() as Promise<CoverLetter>
 }
 

@@ -13,6 +13,7 @@ from app.main import (
 from app.models import (
     CompatibilityReport,
     CompatibilityResult,
+    CoverLetter,
     JobApplication,
     SearchResponse,
     SearchSettingsSnapshot,
@@ -131,6 +132,23 @@ class FakeCareerOpsProvider:
             created_at="2026-10-31T09:00:00Z",
         )
 
+    def load_cover_letter(self, _report_id):  # noqa: ANN001, ANN201
+        return None
+
+    def create_cover_letter(self, report):  # noqa: ANN001, ANN201
+        return CoverLetter(
+            id="letter-1",
+            report_id=report.id,
+            content="Здравствуйте! Меня заинтересовала роль Support engineer. "
+            "Мой подтверждённый опыт соответствует задачам вакансии. "
+            "Буду рад обсудить детали и рассказать о релевантных проектах.",
+            created_at="2026-10-31T09:10:00Z",
+            updated_at="2026-10-31T09:10:00Z",
+        )
+
+    def save_cover_letter(self, _letter):  # noqa: ANN001
+        return None
+
 
 class FakeCompatibilityReportStore:
     is_ready = True
@@ -138,6 +156,7 @@ class FakeCompatibilityReportStore:
     def __init__(self) -> None:
         self.reports = []
         self.tailored_resume = None
+        self.cover_letter = None
 
     async def save_many(self, reports):  # noqa: ANN001
         self.reports = reports
@@ -150,6 +169,12 @@ class FakeCompatibilityReportStore:
 
     async def save_tailored_resume(self, resume):  # noqa: ANN001
         self.tailored_resume = resume
+
+    async def load_cover_letter(self, _report_id):  # noqa: ANN001, ANN201
+        return self.cover_letter
+
+    async def save_cover_letter(self, letter):  # noqa: ANN001
+        self.cover_letter = letter
 
 
 def test_search_endpoint() -> None:
@@ -307,4 +332,76 @@ def test_tailored_resume_endpoint_generates_and_reuses_result() -> None:
     assert created.status_code == 200
     assert created.json()["blocks"][0]["title"] == "Обо мне"
     assert reused.json() == created.json()
+
+
+def test_cover_letter_endpoints_generate_reuse_and_update() -> None:
+    store = FakeCompatibilityReportStore()
+    provider = FakeCareerOpsProvider()
+    store.reports = provider.list_reports()
+    app.dependency_overrides[get_career_ops_provider] = lambda: provider
+    app.dependency_overrides[get_compatibility_report_store] = lambda: store
+    client = TestClient(app)
+
+    created = client.post(
+        "/api/career-ops/cover-letter",
+        json={"report_id": "report-1"},
+    )
+    reused = client.post(
+        "/api/career-ops/cover-letter",
+        json={"report_id": "report-1"},
+    )
+    edited_content = created.json()["content"].replace("Support engineer", "инженера поддержки")
+    updated = client.put(
+        "/api/career-ops/cover-letter/report-1",
+        json={"content": edited_content},
+    )
+
+    app.dependency_overrides.clear()
+    assert created.status_code == 200
+    assert created.json()["content"].startswith("Здравствуйте!")
+    assert reused.json() == created.json()
+    assert updated.status_code == 200
+    assert updated.json()["content"] == edited_content
+
+
+def test_cover_letter_endpoints_report_missing_artifacts() -> None:
+    store = FakeCompatibilityReportStore()
+    provider = FakeCareerOpsProvider()
+    app.dependency_overrides[get_career_ops_provider] = lambda: provider
+    app.dependency_overrides[get_compatibility_report_store] = lambda: store
+    client = TestClient(app)
+
+    create_response = client.post(
+        "/api/career-ops/cover-letter",
+        json={"report_id": "missing"},
+    )
+    update_response = client.put(
+        "/api/career-ops/cover-letter/missing",
+        json={"content": "Достаточно длинный текст отсутствующего сопроводительного письма "
+        "для проверки корректного ответа API при попытке сохранить неизвестный материал."},
+    )
+
+    app.dependency_overrides.clear()
+    assert create_response.status_code == 404
+    assert update_response.status_code == 404
+
+
+def test_cover_letter_endpoint_syncs_local_artifact_to_store() -> None:
+    store = FakeCompatibilityReportStore()
+    provider = FakeCareerOpsProvider()
+    local_letter = provider.create_cover_letter(provider.list_reports()[0])
+    provider.load_cover_letter = lambda _report_id: local_letter  # type: ignore[method-assign]
+    app.dependency_overrides[get_career_ops_provider] = lambda: provider
+    app.dependency_overrides[get_compatibility_report_store] = lambda: store
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/career-ops/cover-letter",
+        json={"report_id": "report-1"},
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["id"] == "letter-1"
+    assert store.cover_letter == local_letter
 

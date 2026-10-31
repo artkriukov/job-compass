@@ -3,7 +3,7 @@ import asyncio
 import psycopg
 from psycopg.types.json import Jsonb
 
-from app.models import CompatibilityReport, TailoredResume
+from app.models import CompatibilityReport, CoverLetter, TailoredResume
 
 
 class CompatibilityReportStorageError(RuntimeError):
@@ -167,3 +167,54 @@ class SupabaseCompatibilityReportStore:
 
     async def save_tailored_resume(self, resume: TailoredResume) -> None:
         await asyncio.to_thread(self._save_tailored_resume, resume)
+
+    def _load_cover_letter(self, report_id: str) -> CoverLetter | None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    "select id, report_id, content, created_at, updated_at "
+                    "from public.cover_letters where report_id = %s",
+                    (report_id,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                return CoverLetter.model_validate({
+                    "id": row[0],
+                    "report_id": row[1],
+                    "content": row[2],
+                    "created_at": row[3],
+                    "updated_at": row[4],
+                })
+        except psycopg.Error as exc:
+            raise CompatibilityReportStorageError(
+                "Не удалось прочитать сопроводительное письмо из Supabase"
+            ) from exc
+
+    async def load_cover_letter(self, report_id: str) -> CoverLetter | None:
+        return await asyncio.to_thread(self._load_cover_letter, report_id)
+
+    def _save_cover_letter(self, letter: CoverLetter) -> None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    "insert into public.cover_letters "
+                    "(id, report_id, content, created_at, updated_at) "
+                    "values (%s, %s, %s, %s, %s) "
+                    "on conflict (report_id) do update set id = excluded.id, "
+                    "content = excluded.content, updated_at = excluded.updated_at",
+                    (
+                        letter.id,
+                        letter.report_id,
+                        letter.content,
+                        letter.created_at,
+                        letter.updated_at,
+                    ),
+                )
+        except psycopg.Error as exc:
+            raise CompatibilityReportStorageError(
+                "Не удалось сохранить сопроводительное письмо в Supabase"
+            ) from exc
+
+    async def save_cover_letter(self, letter: CoverLetter) -> None:
+        await asyncio.to_thread(self._save_cover_letter, letter)

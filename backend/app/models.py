@@ -130,6 +130,25 @@ class TailoredResumeRequest(BaseModel):
     report_id: Annotated[str, Field(min_length=1, max_length=300)]
 
 
+class CoverLetterDraft(BaseModel):
+    content: Annotated[str, Field(min_length=100, max_length=6000)]
+
+
+class CoverLetter(CoverLetterDraft):
+    id: str
+    report_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CoverLetterRequest(BaseModel):
+    report_id: Annotated[str, Field(min_length=1, max_length=300)]
+
+
+class CoverLetterUpdate(BaseModel):
+    content: Annotated[str, Field(min_length=100, max_length=6000)]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     configured_provider: Literal["auto", "ai_job_search", "html"]

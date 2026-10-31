@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -11,6 +12,9 @@ from app.models import (
     CompatibilityReport,
     CompatibilityRequest,
     CompatibilityResult,
+    CoverLetter,
+    CoverLetterRequest,
+    CoverLetterUpdate,
     HealthResponse,
     JobApplication,
     ResumeSnapshot,
@@ -223,6 +227,78 @@ async def create_tailored_resume(
         except CompatibilityReportStorageError:
             pass
     return result
+
+
+@app.post("/api/career-ops/cover-letter", response_model=CoverLetter)
+async def create_cover_letter(
+    payload: CoverLetterRequest,
+    career_ops: CareerOpsDependency,
+    report_store: CompatibilityReportStoreDependency,
+) -> CoverLetter:
+    if report_store.is_ready:
+        try:
+            existing = await report_store.load_cover_letter(payload.report_id)
+            if existing:
+                return existing
+        except CompatibilityReportStorageError:
+            pass
+    local_existing = career_ops.load_cover_letter(payload.report_id)
+    if local_existing:
+        if report_store.is_ready:
+            try:
+                await report_store.save_cover_letter(local_existing)
+            except CompatibilityReportStorageError:
+                pass
+        return local_existing
+    try:
+        reports = await report_store.load() if report_store.is_ready else career_ops.list_reports()
+    except CompatibilityReportStorageError:
+        reports = career_ops.list_reports()
+    report = next((item for item in reports if item.id == payload.report_id), None)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Отчёт для сопроводительного письма не найден")
+    try:
+        result = career_ops.create_cover_letter(report)
+    except CareerOpsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if report_store.is_ready:
+        try:
+            await report_store.save_cover_letter(result)
+        except CompatibilityReportStorageError:
+            pass
+    return result
+
+
+@app.put("/api/career-ops/cover-letter/{report_id}", response_model=CoverLetter)
+async def update_cover_letter(
+    report_id: str,
+    payload: CoverLetterUpdate,
+    career_ops: CareerOpsDependency,
+    report_store: CompatibilityReportStoreDependency,
+) -> CoverLetter:
+    existing = None
+    if report_store.is_ready:
+        try:
+            existing = await report_store.load_cover_letter(report_id)
+        except CompatibilityReportStorageError:
+            pass
+    existing = existing or career_ops.load_cover_letter(report_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Сопроводительное письмо не найдено")
+    updated = existing.model_copy(update={
+        "content": payload.content,
+        "updated_at": datetime.now(UTC),
+    })
+    try:
+        career_ops.save_cover_letter(updated)
+    except CareerOpsError:
+        pass
+    if report_store.is_ready:
+        try:
+            await report_store.save_cover_letter(updated)
+        except CompatibilityReportStorageError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return updated
 
 
 @app.post("/api/search", response_model=SearchResponse)

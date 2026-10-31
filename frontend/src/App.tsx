@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import {
   createRemoteApplication,
+  createCoverLetter,
   createTailoredResume,
   checkCompatibility,
   deleteRemoteApplication,
@@ -13,6 +14,7 @@ import {
   searchVacancies,
   uploadResume,
   updateRemoteApplication,
+  updateCoverLetter,
 } from './api'
 import {
   addVacancyApplication,
@@ -40,7 +42,7 @@ import {
   type SavedRole,
   type SearchSettings,
 } from './search-settings'
-import type { CompatibilityReport, CompatibilityResult, ResumeSnapshot, SearchResponse, TailoredResume, Vacancy } from './types'
+import type { CompatibilityReport, CompatibilityResult, CoverLetter, ResumeSnapshot, SearchResponse, TailoredResume, Vacancy } from './types'
 import { compatibilityPlainText } from './compatibility'
 import './styles.css'
 
@@ -220,14 +222,26 @@ function CompatibilityDialog({ vacancy, report, result, mode, loading, error, do
   const [tailoredResume, setTailoredResume] = useState<TailoredResume | null>(null)
   const [tailoring, setTailoring] = useState(false)
   const [tailoringError, setTailoringError] = useState<string | null>(null)
+  const [coverLetter, setCoverLetter] = useState<CoverLetter | null>(null)
+  const [writingLetter, setWritingLetter] = useState(false)
+  const [savingLetter, setSavingLetter] = useState(false)
+  const [letterDirty, setLetterDirty] = useState(false)
+  const [letterError, setLetterError] = useState<string | null>(null)
   const [copiedBlock, setCopiedBlock] = useState<string | null>(null)
   const tailoredResumeRef = useRef<HTMLElement | null>(null)
+  const coverLetterRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (tailoredResume) {
       tailoredResumeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [tailoredResume])
+
+  useEffect(() => {
+    if (coverLetter?.id) {
+      coverLetterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [coverLetter?.id])
 
   async function handleTailorResume() {
     if (!report) return
@@ -246,13 +260,47 @@ function CompatibilityDialog({ vacancy, report, result, mode, loading, error, do
     }
   }
 
+  async function handleCreateCoverLetter() {
+    if (!report) return
+    if (coverLetter) {
+      coverLetterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+    setWritingLetter(true)
+    setLetterError(null)
+    try {
+      setCoverLetter(await createCoverLetter(report.id))
+      setLetterDirty(false)
+    } catch (requestError) {
+      setLetterError(requestError instanceof Error ? requestError.message : 'Не удалось написать сопроводительное письмо.')
+    } finally {
+      setWritingLetter(false)
+    }
+  }
+
+  async function handleSaveCoverLetter() {
+    if (!report || !coverLetter) return
+    setSavingLetter(true)
+    setLetterError(null)
+    try {
+      setCoverLetter(await updateCoverLetter(report.id, coverLetter.content.trim()))
+      setLetterDirty(false)
+    } catch (requestError) {
+      setLetterError(requestError instanceof Error ? requestError.message : 'Не удалось сохранить сопроводительное письмо.')
+    } finally {
+      setSavingLetter(false)
+    }
+  }
+
   async function copyBlock(key: string, value: string) {
     try {
       await navigator.clipboard.writeText(value)
       setCopiedBlock(key)
       window.setTimeout(() => setCopiedBlock((current) => current === key ? null : current), 1800)
     } catch {
-      setTailoringError('Браузер не разрешил копирование. Выделите текст вручную.')
+      const message = 'Браузер не разрешил копирование. Выделите текст вручную.'
+      if (key === 'cover-letter') setLetterError(message)
+      else setTailoringError(message)
     }
   }
 
@@ -271,8 +319,9 @@ function CompatibilityDialog({ vacancy, report, result, mode, loading, error, do
       {result ? <div className="compatibility-content">
         <div className={`compatibility-score decision-${result.decision}`}><strong>{result.score.toFixed(1)}</strong><span>из 5</span><b>{DECISION_LABELS[result.decision]}</b></div>
         <p className="compatibility-summary">{compatibilityPlainText(result.summary)}</p>
-        {report ? <section className="report-materials"><div><h3>Материалы для отклика</h3><p>Создадим отдельную версию резюме под эту вакансию. Исходный файл не изменится.</p></div><button type="button" className="primary-button" disabled={tailoring} onClick={() => void handleTailorResume()}>{tailoring ? <><span className="spinner" /> Адаптируем…</> : tailoredResume ? 'Перейти к адаптации ↓' : 'Адаптировать резюме'}</button>{tailoringError ? <p className="material-error" role="alert">{tailoringError}</p> : null}</section> : null}
+        {report ? <section className="report-materials"><div><h3>Материалы для отклика</h3><p>Подготовим отдельные материалы под эту вакансию на основе подтверждённого опыта.</p></div><div className="report-material-actions"><button type="button" className="primary-button" disabled={tailoring} onClick={() => void handleTailorResume()}>{tailoring ? <><span className="spinner" /> Адаптируем…</> : tailoredResume ? 'Перейти к резюме ↓' : 'Адаптировать резюме'}</button><button type="button" className="secondary-button" disabled={writingLetter} onClick={() => void handleCreateCoverLetter()}>{writingLetter ? <><span className="spinner" /> Пишем…</> : coverLetter ? 'Перейти к письму ↓' : 'Написать сопроводительное'}</button></div>{tailoringError ? <p className="material-error" role="alert">{tailoringError}</p> : null}{letterError ? <p className="material-error" role="alert">{letterError}</p> : null}</section> : null}
         {tailoredResume ? <section className="tailored-resume" ref={tailoredResumeRef}><div className="tailored-resume-heading"><div><p className="eyebrow">Версия под вакансию</p><h3>Адаптированное резюме</h3></div><button type="button" className="copy-button" onClick={() => void copyBlock('all', fullResumeText)}>{copiedBlock === 'all' ? 'Скопировано ✓' : 'Скопировать всё'}</button></div><div className="tailored-resume-blocks">{tailoredResume.blocks.map((block, index) => { const key = `${index}-${block.title}`; return <article key={key}><header><h4>{block.title}</h4><button type="button" className="copy-button" onClick={() => void copyBlock(key, block.content)}>{copiedBlock === key ? 'Скопировано ✓' : 'Копировать'}</button></header><pre>{block.content}</pre></article> })}</div></section> : null}
+        {coverLetter ? <section className="cover-letter" ref={coverLetterRef}><div className="tailored-resume-heading"><div><p className="eyebrow">Текст для отклика</p><h3>Сопроводительное письмо</h3></div><button type="button" className="copy-button" onClick={() => void copyBlock('cover-letter', coverLetter.content)}>{copiedBlock === 'cover-letter' ? 'Скопировано ✓' : 'Скопировать'}</button></div><textarea aria-label="Сопроводительное письмо" value={coverLetter.content} onChange={(event) => { setCoverLetter({ ...coverLetter, content: event.target.value }); setLetterDirty(true) }} /><div className="cover-letter-footer"><span>{letterDirty ? 'Есть несохранённые изменения' : 'Сохранено в отчёте'}</span><button type="button" className="primary-button" disabled={!letterDirty || savingLetter || coverLetter.content.trim().length < 100} onClick={() => void handleSaveCoverLetter()}>{savingLetter ? 'Сохраняем…' : 'Сохранить изменения'}</button></div></section> : null}
         {result.strengths.length ? <section><h3>Сильные стороны</h3><ul>{result.strengths.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ul></section> : null}
         {result.gaps.length ? <section><h3>Пробелы и как их закрыть</h3><div className="compatibility-gaps">{result.gaps.map((gap) => <article key={`${gap.requirement}-${gap.match}`}><div><strong>{compatibilityPlainText(gap.requirement)}</strong><span className={`gap-match ${gap.match}`}>{gap.match === 'missing' ? 'Нет в резюме' : gap.match === 'partial' ? 'Частично' : gap.match === 'strong' ? 'Сильное совпадение' : 'Не применимо'}</span></div><p>{compatibilityPlainText(gap.evidence)}</p><small>{compatibilityPlainText(gap.recommendation)}</small></article>)}</div></section> : null}
         {result.improvements.length ? <section><h3>Что улучшить в резюме</h3><ol>{result.improvements.map((item) => <li key={item}>{compatibilityPlainText(item)}</li>)}</ol></section> : null}

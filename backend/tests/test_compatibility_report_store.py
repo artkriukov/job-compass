@@ -6,6 +6,7 @@ import pytest
 from app.models import (
     CompatibilityReport,
     CompatibilityResult,
+    CoverLetter,
     TailoredResume,
     Vacancy,
 )
@@ -96,6 +97,18 @@ def make_tailored_resume() -> TailoredResume:
     )
 
 
+def make_cover_letter() -> CoverLetter:
+    return CoverLetter(
+        id="letter-1",
+        report_id="report-1",
+        content="Здравствуйте! Меня заинтересовала роль Backend developer. "
+        "Мой подтверждённый опыт соответствует задачам вакансии. "
+        "Буду рад обсудить детали и рассказать о релевантных проектах.",
+        created_at=datetime(2026, 10, 31, 9, tzinfo=UTC),
+        updated_at=datetime(2026, 10, 31, 9, tzinfo=UTC),
+    )
+
+
 @pytest.mark.asyncio
 async def test_report_store_loads_reports(monkeypatch: pytest.MonkeyPatch) -> None:
     report = make_report()
@@ -172,6 +185,31 @@ async def test_report_store_returns_none_for_missing_tailored_resume(
     assert await store.load_tailored_resume("missing") is None
 
 
+@pytest.mark.asyncio
+async def test_report_store_round_trips_cover_letter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    letter = make_cover_letter()
+    row = (
+        letter.id,
+        letter.report_id,
+        letter.content,
+        letter.created_at,
+        letter.updated_at,
+    )
+    load_cursor = FakeCursor(one=row)
+    store = SupabaseCompatibilityReportStore("postgresql://example")
+    monkeypatch.setattr(store, "_connect", lambda: FakeConnection(load_cursor))
+
+    loaded = await store.load_cover_letter("report-1")
+
+    assert loaded == letter
+    save_cursor = FakeCursor()
+    monkeypatch.setattr(store, "_connect", lambda: FakeConnection(save_cursor))
+    await store.save_cover_letter(letter)
+    assert "insert into public.cover_letters" in save_cursor.queries[0][0]
+
+
 def test_report_store_wraps_tailored_resume_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -186,6 +224,22 @@ def test_report_store_wraps_tailored_resume_errors(
         store._load_tailored_resume("report-1")
     with pytest.raises(CompatibilityReportStorageError, match="сохранить адаптированное"):
         store._save_tailored_resume(make_tailored_resume())
+
+
+def test_report_store_wraps_cover_letter_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = SupabaseCompatibilityReportStore("postgresql://example")
+    monkeypatch.setattr(
+        store,
+        "_connect",
+        lambda: (_ for _ in ()).throw(psycopg.OperationalError()),
+    )
+
+    with pytest.raises(CompatibilityReportStorageError, match="прочитать сопроводительное"):
+        store._load_cover_letter("report-1")
+    with pytest.raises(CompatibilityReportStorageError, match="сохранить сопроводительное"):
+        store._save_cover_letter(make_cover_letter())
 
 
 def test_report_store_without_dsn_is_not_ready() -> None:

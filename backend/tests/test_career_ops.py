@@ -5,7 +5,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.models import CompatibilityReport, CompatibilityRequest, CompatibilityResult, Vacancy
+from app.models import (
+    CompatibilityReport,
+    CompatibilityRequest,
+    CompatibilityResult,
+    CoverLetter,
+    Vacancy,
+)
 from app.services.career_ops import CareerOpsProvider
 
 
@@ -389,3 +395,82 @@ def test_tailor_resume_requires_uploaded_resume(
 
     with pytest.raises(RuntimeError, match="Сначала загрузите резюме"):
         provider.tailor_resume(report)
+
+
+def test_cover_letter_uses_resume_and_local_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    documents = tmp_path / "user-data/documents"
+    documents.mkdir(parents=True)
+    (documents / "resume-one.txt").write_text("Python, SQL and support experience")
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+    codex_calls = 0
+    report = CompatibilityReport(
+        id="report-1",
+        vacancy=make_request().vacancy,
+        mode="quick",
+        result=CompatibilityResult(
+            score=4.0,
+            decision="apply",
+            summary="Хорошее совпадение",
+            strengths=["Python", "SQL"],
+        ),
+        created_at="2026-10-31T08:00:00Z",
+        content="Backend vacancy requires Python and SQL.",
+    )
+
+    def fake_run(command, **kwargs):  # noqa: ANN001
+        nonlocal codex_calls
+        codex_calls += 1
+        assert command[command.index("--model") + 1] == "gpt-6-luna"
+        assert "запрещено придумывать" in kwargs["input"]
+        assert "Python, SQL and support experience" in kwargs["input"]
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text(json.dumps({
+            "content": "Здравствуйте! Меня заинтересовала вакансия Backend developer. "
+            "У меня есть подтверждённый опыт работы с Python и SQL, а также опыт поддержки. "
+            "Буду рад обсудить задачи команды и подробнее рассказать о своём опыте.",
+        }))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.services.career_ops.subprocess.run", fake_run)
+
+    first = provider.create_cover_letter(report)
+    second = provider.create_cover_letter(report)
+
+    assert first == second
+    assert first.report_id == "report-1"
+    assert first.content.startswith("Здравствуйте!")
+    assert provider.load_cover_letter("report-1") == first
+    assert codex_calls == 1
+
+
+def test_cover_letter_requires_data_directory_and_uploaded_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = make_provider(tmp_path)
+    monkeypatch.setattr("app.services.career_ops.shutil.which", lambda _name: "/bin/tool")
+    report = CompatibilityReport(
+        id="report-1",
+        vacancy=make_request().vacancy,
+        mode="quick",
+        result=CompatibilityResult(score=3.0, decision="research", summary="Проверить"),
+        created_at="2026-10-31T08:00:00Z",
+    )
+
+    with pytest.raises(RuntimeError, match="Сначала загрузите резюме"):
+        provider.create_cover_letter(report)
+
+    provider.data_dir = None
+    assert provider.load_cover_letter("report-1") is None
+    letter = CoverLetter(
+        id="letter-1",
+        report_id="report-1",
+        content="Здравствуйте! Это достаточно длинный текст сопроводительного письма, "
+        "который содержит только подтверждённые факты и готов для отправки работодателю.",
+        created_at="2026-10-31T09:00:00Z",
+        updated_at="2026-10-31T09:00:00Z",
+    )
+    with pytest.raises(RuntimeError, match="CAREER_OPS_DATA_DIR"):
+        provider.save_cover_letter(letter)

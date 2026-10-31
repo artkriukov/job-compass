@@ -67,3 +67,11 @@ export type TailoredResume = {
   created_at: string
 }
 
+export type CoverLetter = {
+  id: string
+  report_id: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+

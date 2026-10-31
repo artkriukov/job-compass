@@ -34,6 +34,7 @@ packages = ["app"]
 "app/ai_job_search_result.schema.json" = "app/ai_job_search_result.schema.json"
 "app/career_ops_compatibility.schema.json" = "app/career_ops_compatibility.schema.json"
 "app/tailored_resume.schema.json" = "app/tailored_resume.schema.json"
+"app/cover_letter.schema.json" = "app/cover_letter.schema.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
