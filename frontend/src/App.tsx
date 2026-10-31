@@ -44,7 +44,7 @@ import {
   type SearchSettings,
 } from './search-settings'
 import type { CompatibilityReport, CompatibilityResult, CoverLetter, ResumeSnapshot, SearchResponse, TailoredResume, Vacancy } from './types'
-import { compatibilityPlainText } from './compatibility'
+import { compatibilityPlainText, findCompatibilityReport } from './compatibility'
 import './styles.css'
 
 type Page = 'search' | 'applications' | 'reports' | 'resume' | 'settings'
@@ -694,6 +694,21 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     }
   }
 
+  async function refreshCompatibilityReport(vacancy: Vacancy, mode: 'quick' | 'full') {
+    const controller = new AbortController()
+    try {
+      const loadedReports = await getCompatibilityReports(controller.signal)
+      setReports(loadedReports)
+      const matchingReport = findCompatibilityReport(loadedReports, vacancy.url, mode)
+      if (matchingReport) {
+        setCompatibilitySourceReport(matchingReport)
+        setCompatibilityDocument(matchingReport.content)
+      }
+    } catch {
+      // The analysis remains usable even if report history cannot be refreshed.
+    }
+  }
+
   async function handleCompatibility(vacancy: Vacancy, mode: 'quick' | 'full' = 'quick') {
     setCompatibilityVacancy(vacancy)
     setCompatibilityMode(mode)
@@ -704,6 +719,13 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
     const cached = compatibilityCache[cacheKey]
     if (cached) {
       setCompatibilityResult(cached)
+      const savedReport = findCompatibilityReport(reports, vacancy.url, mode)
+      if (savedReport) {
+        setCompatibilitySourceReport(savedReport)
+        setCompatibilityDocument(savedReport.content)
+      } else {
+        void refreshCompatibilityReport(vacancy, mode)
+      }
       return
     }
     setCompatibilityResult(null)
@@ -712,8 +734,7 @@ function SearchPage({ settings, selectedSiteIds, setSelectedSiteIds, selectedRol
       const checked = await checkCompatibility(vacancy, settings.roles.map((role) => role.title), mode)
       setCompatibilityResult(checked)
       setCompatibilityCache((current) => ({ ...current, [cacheKey]: checked }))
-      const controller = new AbortController()
-      void getCompatibilityReports(controller.signal).then(setReports).catch(() => undefined)
+      await refreshCompatibilityReport(vacancy, mode)
     } catch (requestError) {
       setCompatibilityError(requestError instanceof Error ? requestError.message : 'Не удалось выполнить анализ.')
     } finally {
